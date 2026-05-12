@@ -1,0 +1,360 @@
+version: "3.8"
+
+# ============================================================
+# ST1630 - Sistemas Intensivos en Datos
+# Persona 1: Infraestructura y Kafka
+# docker-compose.yml completo
+# ============================================================
+
+networks:
+  # Red interna que conecta TODOS los servicios entre sí.
+  # Los contenedores se hablan por nombre, ej: "kafka:9092"
+  datapipeline:
+    driver: bridge
+
+volumes:
+  # Volumen persistente para que MinIO no pierda datos al reiniciar
+  minio_data:
+  # Volumen persistente para MongoDB
+  mongo_data:
+  # Volumen persistente para PostgreSQL
+  postgres_data:
+
+services:
+
+  # ============================================================
+  # ZOOKEEPER — coordinador de Kafka
+  # Kafka lo necesita para funcionar. No hay que tocarlo.
+  # ============================================================
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    networks:
+      - datapipeline
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo ruok | nc localhost 2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # KAFKA — sistema de mensajería (la "cinta transportadora")
+  # Puerto 9092: para comunicación INTERNA entre contenedores
+  # Puerto 29092: para comunicación EXTERNA (desde tu PC)
+  # ============================================================
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    networks:
+      - datapipeline
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "29092:29092"   # Puerto externo (tu script Python del simulador)
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      # INTERNO: cómo se comunican los contenedores entre sí
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      # Cuánto tiempo se guardan los mensajes en Kafka (7 días)
+      KAFKA_LOG_RETENTION_HOURS: 168
+      # Tamaño máximo por partición: 1GB
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ============================================================
+  # KAFKA-INIT — crea el topic 'platform-events' automáticamente
+  # Solo corre una vez y termina (no es un servicio permanente)
+  # ============================================================
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-init
+    networks:
+      - datapipeline
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "
+      echo 'Esperando que Kafka esté listo...'
+      sleep 10
+
+      echo 'Creando topic platform-events con 3 particiones...'
+      kafka-topics --create \
+        --if-not-exists \
+        --bootstrap-server kafka:9092 \
+        --topic platform-events \
+        --partitions 3 \
+        --replication-factor 1
+
+      echo 'Topics creados exitosamente:'
+      kafka-topics --list --bootstrap-server kafka:9092
+      "
+
+  # ============================================================
+  # KAFKA UI — interfaz web para ver mensajes en tiempo real
+  # Acceder en: http://localhost:8080
+  # ============================================================
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    networks:
+      - datapipeline
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+
+  # ============================================================
+  # MINIO — almacenamiento tipo S3 local
+  # Consola web: http://localhost:9001
+  # Usuario: minioadmin | Contraseña: minioadmin123
+  # API (para Spark): http://localhost:9000
+  # ============================================================
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    networks:
+      - datapipeline
+    ports:
+      - "9000:9000"   # API compatible con S3
+      - "9001:9001"   # Consola web
+    volumes:
+      - minio_data:/data
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # MINIO-INIT — crea los buckets automáticamente al arrancar
+  # Crea: bronze, silver, gold, warehouse (para Iceberg)
+  # ============================================================
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio-init
+    networks:
+      - datapipeline
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "
+      echo 'Conectando a MinIO...'
+      mc alias set local http://minio:9000 minioadmin minioadmin123
+
+      echo 'Creando buckets...'
+      mc mb --ignore-existing local/bronze
+      mc mb --ignore-existing local/silver
+      mc mb --ignore-existing local/gold
+      mc mb --ignore-existing local/warehouse
+
+      echo 'Configurando política pública de lectura...'
+      mc anonymous set download local/bronze
+      mc anonymous set download local/silver
+      mc anonymous set download local/gold
+
+      echo 'Buckets disponibles:'
+      mc ls local
+      "
+
+  # ============================================================
+  # SPARK MASTER — nodo principal del clúster Spark
+  # UI web: http://localhost:8081
+  # ============================================================
+  spark-master:
+    image: bitnami/spark:3.5.1
+    container_name: spark-master
+    networks:
+      - datapipeline
+    ports:
+      - "8081:8080"   # Spark Web UI
+      - "7077:7077"   # Puerto de conexión de workers
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      # Configuración de memoria para Iceberg + MinIO
+      - SPARK_EXTRA_CLASSPATH=/opt/bitnami/spark/jars/iceberg-spark-runtime-3.5_2.12-1.5.0.jar:/opt/bitnami/spark/jars/hadoop-aws-3.3.4.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle-1.12.262.jar
+    volumes:
+      - ./spark/jobs:/opt/bitnami/spark/jobs     # Scripts de Persona 3
+      - ./spark/jars:/opt/bitnami/spark/jars     # JARs de Iceberg y AWS
+      - ./data:/opt/bitnami/spark/data           # Dataset MovieLens
+
+  # ============================================================
+  # SPARK WORKER — ejecuta las tareas distribuidas
+  # Configurado con 4 cores y 6GB RAM (ajusta según tu máquina)
+  # ============================================================
+  spark-worker:
+    image: bitnami/spark:3.5.1
+    container_name: spark-worker
+    networks:
+      - datapipeline
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=6G
+      - SPARK_WORKER_CORES=4
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    volumes:
+      - ./spark/jobs:/opt/bitnami/spark/jobs
+      - ./spark/jars:/opt/bitnami/spark/jars
+      - ./data:/opt/bitnami/spark/data
+
+  # ============================================================
+  # FLINK JOB MANAGER — nodo principal de Apache Flink
+  # UI web: http://localhost:8082
+  # ============================================================
+  flink-jobmanager:
+    image: flink:1.18-scala_2.12
+    container_name: flink-jobmanager
+    networks:
+      - datapipeline
+    ports:
+      - "8082:8081"   # Flink Web UI
+    command: jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        parallelism.default: 2
+        state.backend: filesystem
+        state.checkpoints.dir: file:///tmp/flink-checkpoints
+        execution.checkpointing.interval: 30000
+        execution.checkpointing.mode: AT_LEAST_ONCE
+    volumes:
+      - ./flink/jobs:/opt/flink/jobs     # Script de Persona 2
+
+  # ============================================================
+  # FLINK TASK MANAGER — ejecuta las tareas de Flink
+  # ============================================================
+  flink-taskmanager:
+    image: flink:1.18-scala_2.12
+    container_name: flink-taskmanager
+    networks:
+      - datapipeline
+    depends_on:
+      - flink-jobmanager
+    command: taskmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        taskmanager.memory.process.size: 2048m
+    volumes:
+      - ./flink/jobs:/opt/flink/jobs
+
+  # ============================================================
+  # MONGODB — base de datos NoSQL para resultados de Flink
+  # Puerto: 27017
+  # Sin autenticación (solo desarrollo local)
+  # ============================================================
+  mongodb:
+    image: mongo:7.0
+    container_name: mongodb
+    networks:
+      - datapipeline
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # MONGODB-INIT — crea colecciones e índices automáticamente
+  # ============================================================
+  mongodb-init:
+    image: mongo:7.0
+    container_name: mongodb-init
+    networks:
+      - datapipeline
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "
+      sleep 5
+      mongosh mongodb://mongodb:27017 --eval '
+        use streaming_results;
+
+        // Colección: películas en tendencia (ventana 5min)
+        db.createCollection(\"trending_movies\");
+        db.trending_movies.createIndex({ window_start: -1 });
+        db.trending_movies.createIndex({ window_end: -1 });
+
+        // Colección: actividad por género (ventana 10min deslizante)
+        db.createCollection(\"genre_activity\");
+        db.genre_activity.createIndex({ window_start: -1 });
+        db.genre_activity.createIndex({ genre: 1 });
+
+        // Colección: alertas de anomalías
+        db.createCollection(\"anomaly_alerts\");
+        db.anomaly_alerts.createIndex({ user_id: 1 });
+        db.anomaly_alerts.createIndex({ detected_at: -1 });
+
+        print(\"Colecciones e índices creados correctamente\");
+        db.getCollectionNames();
+      '
+      "
+
+  # ============================================================
+  # POSTGRESQL — base de datos relacional para comparativa
+  # Puerto: 5432
+  # Base de datos: movielens | Usuario: postgres | Contraseña: postgres123
+  # ============================================================
+  postgresql:
+    image: postgres:16
+    container_name: postgresql
+    networks:
+      - datapipeline
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: movielens
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d movielens"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
