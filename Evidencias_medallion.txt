@@ -1,0 +1,92 @@
+>>> Limpiando tablas Bronze para garantizar ejecución limpia...
+>>> Tablas limpias.
+
+Total ratings en el dataset: 32,000,204
+Lote 1: ratings con rating_year <= 2018: 25,979,507
+Lote 2: ratings con rating_year >  2018: 6,020,697
+
+>>> INICIANDO: Lote 1: ratings hasta 2018
+    Registros totales en bronze.ratings: 25,979,507
+>>> COMPLETADO: Lote 1: ratings hasta 2018
+
+
+>>> INICIANDO: Lote 1: movies completo
+    Registros totales en bronze.movies: 87,585
+>>> COMPLETADO: Lote 1: movies completo
+
+
+>>> INICIANDO: Lote 1: tags completo
+    Registros totales en bronze.tags: 2,000,072
+>>> COMPLETADO: Lote 1: tags completo
+
+
+Snapshots de bronze.ratings ANTES del lote 2:
++-------------------+--------------------+
+|        snapshot_id|        committed_at|
++-------------------+--------------------+
+|9052518170466234129|2026-05-15 01:59:...|
+|6004113022873809191|2026-05-15 02:07:...|
+|3853738997075561773|2026-05-15 02:08:...|
+|1901175441448868467|2026-05-15 02:11:...|
+|2378720405043105966|2026-05-15 02:13:...|
++-------------------+--------------------+
+
+
+>>> INICIANDO: Lote 2: ratings posteriores a 2018
+    Registros totales en bronze.ratings: 32,000,204
+>>> COMPLETADO: Lote 2: ratings posteriores a 2018
+
+
+=== VERIFICACIONES BRONZE ===
+Integridad OK: 32,000,204 ratings en Bronze
+Rangos OK: todos los ratings entre 0.5 y 5.0
+Snapshots OK: 6 snapshots en bronze.ratings
+
+=== BRONZE COMPLETADO EXITOSAMENTE ===
+
+
+
+=== VERIFICACIONES SILVER ===
+Registros en Silver: 32,000,204
+Nulos OK: no hay userId ni movieId nulos
+
+=== SILVER COMPLETADO EXITOSAMENTE ===
+
+>>> Limpiando tablas Gold para garantizar ejecucion limpia...
+26/05/15 03:44:34 WARN MetricsConfig: Cannot locate configuration: tried hadoop-metrics2-s3a-file-system.properties,hadoop-metrics2.properties
+    local.gold.recommendations no existe aun, se creara
+    local.gold.stats_genre_decade no existe aun, se creara
+    local.gold.rating_distribution no existe aun, se creara
+
+>>> Leyendo Silver...
+>>> Entrenando modelo ALS...
+    Esto puede tomar 10-20 minutos con 32M de registros...
+    Modelo ALS entrenado correctamente
+>>> Generando recomendaciones para todos los usuarios...
+    Recomendaciones generadas: 1,971,620 filas
+    Recomendaciones guardadas en Gold
+>>> Calculando estadisticas por genero y decada...
+    Estadisticas por genero y decada guardadas en Gold
+
+>>> Demostrando Time Travel en Bronze...
++-------------------+--------------------+---------+
+|        snapshot_id|        committed_at|operation|
++-------------------+--------------------+---------+
+|9052518170466234129|2026-05-15 01:59:...|   append|
+|6004113022873809191|2026-05-15 02:07:...|   append|
+|3853738997075561773|2026-05-15 02:08:...|   append|
+|1901175441448868467|2026-05-15 02:11:...|   delete|
+|2378720405043105966|2026-05-15 02:13:...|   append|
+|3177587727777339785|2026-05-15 02:13:...|   append|
++-------------------+--------------------+---------+
+
+    Registros en snapshot 1 (lote 1 solamente): 25,979,507
+    Registros actuales (lote 1 + lote 2): 32,000,204
+    Time Travel OK: se puede ver el estado anterior
+
+=== GOLD COMPLETADO EXITOSAMENTE ===
+
+
+Nota técnica de ejecución:
+- En Windows + WSL2, asignar 12 GB en `.wslconfig` evitó que Docker/Spark rechazara recursos durante Gold.
+- El error que aparecía antes era por presión de memoria y conexión del worker con el master, no por el código del pipeline.
