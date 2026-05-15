@@ -1,0 +1,56 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "27a9ef90-f221-47ab-b355-ddbf782aa973",
+  "location" : "s3a://warehouse/gold/stats_genre_decade",
+  "last-sequence-number" : 0,
+  "last-updated-ms" : 1778817034167,
+  "last-column-id" : 4,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "genre",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 2,
+      "name" : "decade",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 3,
+      "name" : "avg_rating",
+      "required" : false,
+      "type" : "double"
+    }, {
+      "id" : 4,
+      "name" : "total_ratings",
+      "required" : false,
+      "type" : "long"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : -1,
+  "refs" : { },
+  "snapshots" : [ ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ ],
+  "metadata-log" : [ ]
+}

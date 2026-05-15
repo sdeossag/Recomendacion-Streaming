@@ -1,0 +1,46 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "6c3ce0da-836a-4654-8eee-a46440cb97ee",
+  "location" : "s3a://warehouse/gold/rating_distribution",
+  "last-sequence-number" : 0,
+  "last-updated-ms" : 1778817071724,
+  "last-column-id" : 2,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "rating",
+      "required" : false,
+      "type" : "double"
+    }, {
+      "id" : 2,
+      "name" : "total",
+      "required" : false,
+      "type" : "long"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : -1,
+  "refs" : { },
+  "snapshots" : [ ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ ],
+  "metadata-log" : [ ]
+}

@@ -1,0 +1,82 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "b17aa0b9-98f5-4c86-94bd-d8463f008f52",
+  "location" : "s3a://warehouse/gold/recommendations",
+  "last-sequence-number" : 1,
+  "last-updated-ms" : 1778817033839,
+  "last-column-id" : 3,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "userId",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "movieId",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 3,
+      "name" : "predicted_score",
+      "required" : false,
+      "type" : "double"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : 6303009132116027733,
+  "refs" : {
+    "main" : {
+      "snapshot-id" : 6303009132116027733,
+      "type" : "branch"
+    }
+  },
+  "snapshots" : [ {
+    "sequence-number" : 1,
+    "snapshot-id" : 6303009132116027733,
+    "timestamp-ms" : 1778817033839,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "app-20260515034431-0000",
+      "added-data-files" : "24",
+      "added-records" : "1971620",
+      "added-files-size" : "9184753",
+      "changed-partition-count" : "1",
+      "total-records" : "1971620",
+      "total-files-size" : "9184753",
+      "total-data-files" : "24",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0"
+    },
+    "manifest-list" : "s3a://warehouse/gold/recommendations/metadata/snap-6303009132116027733-1-68119564-a12c-49ce-b9e9-649ba43e5618.avro",
+    "schema-id" : 0
+  } ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ {
+    "timestamp-ms" : 1778817033839,
+    "snapshot-id" : 6303009132116027733
+  } ],
+  "metadata-log" : [ {
+    "timestamp-ms" : 1778816899110,
+    "metadata-file" : "s3a://warehouse/gold/recommendations/metadata/v1.metadata.json"
+  } ]
+}
