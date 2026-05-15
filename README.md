@@ -41,6 +41,7 @@ Recomendacion-Streaming/
 - Python 3.8 o superior
 - 8GB RAM mínimo disponibles para Docker
 - 20GB espacio libre en disco
+- Si usas Windows + WSL2, recomienda asignar al menos 12GB en `.wslconfig` para Spark/ALS. Con menos memoria Docker puede rechazar recursos aunque el worker parezca levantado.
 
 ---
 
@@ -60,6 +61,8 @@ docker-compose up -d
 ```
 
 La primera vez descarga imágenes (~5GB). Tarda entre 5 y 15 minutos según tu internet.
+
+> Nota: Kafka UI quedó publicado en `http://localhost:8085` para evitar conflicto con otros procesos en Windows.
 
 ### Paso 3 — Verificar que todo está corriendo
 
@@ -83,6 +86,12 @@ Deben aparecer estos contenedores en estado `running` o `healthy`:
 
 Los contenedores `kafka-init`, `minio-init` y `mongodb-init` aparecen, hacen su trabajo (crear topics, buckets y colecciones) y se cierran solos. Eso es normal.
 
+Para verificar el estado real:
+
+```bash
+docker-compose ps
+```
+
 ### Paso 4 — Detener los servicios al terminar el día
 
 ```bash
@@ -97,7 +106,7 @@ Los datos se conservan. Para volver a levantar: `docker-compose up -d`
 
 | URL | Servicio | Credenciales |
 |---|---|---|
-| http://localhost:8080 | Kafka UI — ver mensajes en tiempo real | Sin login |
+| http://localhost:8085 | Kafka UI — ver mensajes en tiempo real | Sin login |
 | http://localhost:8082 | Flink UI — ver jobs de streaming | Sin login |
 | http://localhost:8888 | Jupyter Lab + PySpark | Sin contraseña |
 | http://localhost:4040 | Spark UI — aparece solo cuando hay un job activo | Sin login |
@@ -157,30 +166,30 @@ Para detener: `Ctrl+C`
 
 ---
 
-## Cómo descargar el dataset MovieLens 25M (Persona 3)
+## Cómo descargar el dataset MovieLens 32M 
 
 ```bash
 cd data
 
-# Descargar (~250MB)
-wget https://files.grouplens.org/datasets/movielens/ml-25m.zip
+# Descargar (~850MB)
+wget https://files.grouplens.org/datasets/movielens/ml-32m.zip
 
 # En Windows (PowerShell):
-Invoke-WebRequest -Uri https://files.grouplens.org/datasets/movielens/ml-25m.zip -OutFile ml-25m.zip
+Invoke-WebRequest -Uri https://files.grouplens.org/datasets/movielens/ml-32m.zip -OutFile ml-32m.zip
 
 # Descomprimir
 # Linux/Mac:
-unzip ml-25m.zip
+unzip ml-32m.zip
 # Windows: clic derecho → Extraer aquí
 
 # Archivos resultantes:
-# data/ml-25m/ratings.csv   → 25 millones de calificaciones
-# data/ml-25m/movies.csv    → 62,000 películas con géneros
-# data/ml-25m/tags.csv      → tags de usuarios
-# data/ml-25m/links.csv     → links a IMDB y TMDB
+# data/ml-32m/ratings.csv   → 32,000,204 calificaciones
+# data/ml-32m/movies.csv    → 87,585 peliculas con generos
+# data/ml-32m/tags.csv      → 2,000,072 tags
+# data/ml-32m/links.csv     → links a IMDB y TMDB
 ```
 
-Los CSV **no se suben a GitHub** (están en .gitignore). Cada persona los descarga localmente.
+Los CSV **no se suben a GitHub** (estan en .gitignore). Cada persona los descarga localmente.
 
 ---
 
@@ -200,7 +209,19 @@ database  = "streaming_results"
 
 ### Persona 3 — Spark (Jupyter)
 
-Abrir http://localhost:8888, crear un notebook y usar:
+Abrir http://localhost:8888, crear un notebook o usar `spark-submit` dentro del contenedor.
+
+**Spark ya queda configurado con Iceberg y MinIO** mediante `spark/conf/spark-defaults.conf`.
+
+Para ejecutar un script de Persona 3:
+
+```bash
+docker exec -it spark-master spark-submit /home/jovyan/jobs/ingestion_bronze.py
+docker exec -it spark-master spark-submit /home/jovyan/jobs/transformation_silver.py
+docker exec -it spark-master spark-submit /home/jovyan/jobs/training_gold.py
+```
+
+En Jupyter:
 
 ```python
 from pyspark.sql import SparkSession
@@ -210,7 +231,6 @@ spark = SparkSession.builder \
     .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
     .config("spark.hadoop.fs.s3a.access.key", "minioadmin") \
     .config("spark.hadoop.fs.s3a.secret.key", "minioadmin123") \
-    .config("spark.hadoop.fs.s3a.path.style.access", "true") \
     .getOrCreate()
 
 # Rutas de las capas
@@ -278,14 +298,24 @@ Cada persona trabaja en su propia carpeta → no hay conflictos.
 ## Demo en vivo — orden de ejecución
 
 1. `docker-compose up -d` — levantar infraestructura
-2. Abrir http://localhost:8080 — Kafka UI vacío
+2. Abrir http://localhost:8085 — Kafka UI vacío
 3. `python event_simulator.py` — mensajes llegando a Kafka en tiempo real
-4. Abrir http://localhost:8080 → Topics → platform-events → Messages — ver eventos
+4. Abrir http://localhost:8085 → Topics → platform-events → Messages — ver eventos
 5. Abrir http://localhost:8082 — Flink UI con job de streaming corriendo
 6. Abrir http://localhost:8888 — correr pipeline batch de Spark (Bronze → Silver → Gold)
 7. Abrir http://localhost:9001 — ver archivos en MinIO (capas bronze, silver, gold)
 8. Mostrar dashboard Streamlit con recomendaciones + trending en tiempo real
 9. Mostrar comparativa SQL vs NoSQL en Jupyter
+
+---
+
+## Notas técnicas de Persona 3
+
+- `spark-defaults.conf` monta Iceberg + S3A + catálogo `local` para que Spark reconozca las tablas.
+- Los jobs de Spark viven en `spark/jobs/` y se ven en Jupyter como `/home/jovyan/jobs`.
+- El dataset MovieLens debe estar en `data/`; el contenedor lo monta como `/home/jovyan/data`.
+- Si usas Git Bash en Windows, prefiere `docker exec -it spark-master spark-submit ...` desde PowerShell para evitar problemas de rutas.
+- En Windows/WSL2, si Gold falla con mensajes como `App requires more resource than any of Workers could have` o el worker se desconecta, sube la memoria de WSL a 12GB en `.wslconfig`. Esa fue la corrección que estabilizó el ALS y permitió completar Gold.
 
 ---
 
