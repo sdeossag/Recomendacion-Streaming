@@ -17,6 +17,8 @@ volumes:
   mongo_data:
   # Volumen persistente para PostgreSQL
   postgres_data:
+  # Cache de Ivy para dependencias Spark/Iceberg
+  spark_ivy_cache:
 
 services:
 
@@ -104,7 +106,7 @@ services:
 
   # ============================================================
   # KAFKA UI — interfaz web para ver mensajes en tiempo real
-  # Acceder en: http://localhost:8080
+  # Acceder en: http://localhost:8085
   # ============================================================
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -115,7 +117,7 @@ services:
       kafka:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "8085:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local-cluster
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
@@ -201,12 +203,14 @@ services:
       - SPARK_MASTER_WEBUI_PORT=8080
     command: >
       bash -c "
-        start-master.sh &
-        start-notebook.sh --NotebookApp.token='' --NotebookApp.password=''
+        /usr/local/spark/sbin/start-master.sh &
+        start-notebook.py --ServerApp.token='' --ServerApp.password=''
       "
     volumes:
       - ./spark/jobs:/home/jovyan/jobs        # Scripts de Persona 3
       - ./data:/home/jovyan/data              # Dataset MovieLens
+      - ./spark/conf/spark-defaults.conf:/usr/local/spark/conf/spark-defaults.conf:ro
+      - spark_ivy_cache:/home/jovyan/.ivy2
     user: root
 
   # ============================================================
@@ -226,10 +230,12 @@ services:
       - SPARK_WORKER_MEMORY=4G
       - SPARK_WORKER_CORES=2
     command: >
-      bash -c "start-worker.sh spark://spark-master:7077"
+      bash -c "/usr/local/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"
     volumes:
       - ./spark/jobs:/home/jovyan/jobs
       - ./data:/home/jovyan/data
+      - ./spark/conf/spark-defaults.conf:/usr/local/spark/conf/spark-defaults.conf:ro
+      - spark_ivy_cache:/home/jovyan/.ivy2
     user: root
 
   # ============================================================
