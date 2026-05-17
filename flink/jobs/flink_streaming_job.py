@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timezone
 
 import pymongo
-from pyflink.common import Time, Types, WatermarkStrategy
+from pyflink.common import Time, Types, WatermarkStrategy, Duration
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.datastream import StreamExecutionEnvironment, TimeCharacteristic
 from pyflink.datastream.connectors.kafka import FlinkKafkaConsumer
@@ -12,7 +12,7 @@ from pyflink.datastream.functions import FlatMapFunction, ProcessWindowFunction
 from pyflink.datastream.window import (
     TumblingEventTimeWindows,
     SlidingEventTimeWindows,
-    SessionWindows,
+    EventTimeSessionWindows,
 )
 
 # ---------------------------------------------------------------------------
@@ -262,8 +262,8 @@ def main():
 
     watermark_strategy = (
         WatermarkStrategy
-        .for_bounded_out_of_orderness(Time.milliseconds(MAX_OUT_OF_ORDERNESS_MS))
-        .with_idleness(Time.milliseconds(IDLENESS_MS))
+        .for_bounded_out_of_orderness(Duration.of_millis(MAX_OUT_OF_ORDERNESS_MS))
+        .with_idleness(Duration.of_millis(IDLENESS_MS))
         .with_timestamp_assigner(EventTimestampAssigner())
     )
 
@@ -309,7 +309,7 @@ def main():
     anomaly_stream = (
         ratings_only
         .key_by(lambda e: e["user_id"])
-        .window(SessionWindows.with_gap(Time.minutes(2)))
+        .window(EventTimeSessionWindows.with_gap(Time.minutes(2)))
         .process(
             AnomalyDetectionWindowProcess(),
             output_type=Types.PICKLED_BYTE_ARRAY(),

@@ -79,10 +79,11 @@ Deben aparecer estos contenedores en estado `running` o `healthy`:
 | kafka-ui | provectuslabs/kafka-ui:latest |
 | minio | minio/minio:latest |
 | spark-master | jupyter/pyspark-notebook:spark-3.5.0 |
-| flink-jobmanager | flink:1.18-scala_2.12 |
-| flink-taskmanager | flink:1.18-scala_2.12 |
+| flink-jobmanager | flink-python:1.18-scala_2.12 (compilado automático) |
+| flink-taskmanager | flink-python:1.18-scala_2.12 (compilado automático) |
 | mongodb | mongo:7.0 |
 | postgresql | postgres:16 |
+| streamlit | build local desde dashboard/Dockerfile |
 
 Los contenedores `kafka-init`, `minio-init` y `mongodb-init` aparecen, hacen su trabajo (crear topics, buckets y colecciones) y se cierran solos. Eso es normal.
 
@@ -111,6 +112,7 @@ Los datos se conservan. Para volver a levantar: `docker-compose up -d`
 | http://localhost:8888 | Jupyter Lab + PySpark | Sin contraseña |
 | http://localhost:4040 | Spark UI — aparece solo cuando hay un job activo | Sin login |
 | http://localhost:9001 | MinIO consola — ver buckets y archivos | minioadmin / minioadmin123 |
+| http://localhost:8501 | Streamlit Dashboard — app interactiva | Sin login |
 
 ---
 
@@ -127,19 +129,49 @@ Los datos se conservan. Para volver a levantar: `docker-compose up -d`
 
 ## Cómo correr el simulador de eventos (Persona 1)
 
-El simulador genera eventos de usuarios interactuando con la plataforma y los envía al topic `platform-events` de Kafka.
+El simulador genera eventos de usuarios interactuando con la plataforma y los envía al topic `platform-events` de Kafka. Se puede correr de dos formas:
 
+### Opción A — Ejecución limpia en Docker (Recomendada - Sin instalar nada local)
+Esta opción es excelente porque no requiere tener Python o pip instalados en tu sistema local:
+
+```bash
+# 1. Copiar el simulador a la carpeta compartida con Spark
+cp event_simulator.py spark/jobs/
+
+# 2. Ejecutar el simulador dentro del contenedor de Spark pointing al broker de Docker
+docker exec -it spark-master bash -c "pip install kafka-python && KAFKA_BOOTSTRAP_SERVERS=kafka:9092 python3 /home/jovyan/jobs/event_simulator.py"
+```
+
+### Opción B — Ejecución local (Requiere Python y pip en tu PC)
 ```bash
 # Instalar dependencia (solo la primera vez)
 pip install kafka-python
 
-# Correr el simulador
+# Correr el simulador apuntando a localhost:29092
 python event_simulator.py
 ```
 
-Para verificar que los mensajes llegan: abrir http://localhost:8080 → Topics → platform-events → Messages.
+Para verificar que los mensajes llegan: abrir http://localhost:8085 → Topics → platform-events → Messages.
 
 Para detener: `Ctrl+C`
+
+---
+
+## Cómo correr el Job de Streaming en Flink (Persona 2 y 5)
+
+El procesamiento de streaming en tiempo real se ejecuta en Apache Flink. Con las últimas automatizaciones, la imagen de Flink compila con soporte de PyFlink y Kafka de forma transparente.
+
+Para iniciar el Job de streaming:
+
+```bash
+# 1. Copiar el script al volumen montado
+cp flink/flink_streaming_job.py flink/jobs/
+
+# 2. Enviar el Job al clúster de Flink en segundo plano
+docker exec -it flink-jobmanager flink run -d -py /opt/flink/jobs/flink_streaming_job.py
+```
+
+Para monitorear el estado, reintentos y ver el flujo gráfico, abre **http://localhost:8082** en tu navegador.
 
 ---
 
@@ -265,10 +297,11 @@ conn = psycopg2.connect(
 
 ### Persona 5 — Streamlit
 
-```bash
-pip install streamlit pymongo
-streamlit run dashboard/streamlit_app.py
-```
+El dashboard ya está dockerizado y arranca automáticamente con `docker-compose up`.
+Puedes ver los cambios en tiempo real editando el archivo `dashboard/streamlit_app.py`, ya que la carpeta está montada como volumen.
+
+Para abrir la aplicación, ingresa en tu navegador a:
+**http://localhost:8501**
 
 ---
 

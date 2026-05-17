@@ -1,0 +1,6 @@
+streamlit
+pymongo
+pyspark==3.5.0
+pandas
+plotly
+matplotlib

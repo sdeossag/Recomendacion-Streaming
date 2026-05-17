@@ -243,7 +243,10 @@ services:
   # UI web: http://localhost:8082
   # ============================================================
   flink-jobmanager:
-    image: flink:1.18-scala_2.12
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    image: flink-python:1.18-scala_2.12
     container_name: flink-jobmanager
     networks:
       - datapipeline
@@ -267,7 +270,10 @@ services:
   # FLINK TASK MANAGER — ejecuta las tareas de Flink
   # ============================================================
   flink-taskmanager:
-    image: flink:1.18-scala_2.12
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    image: flink-python:1.18-scala_2.12
     container_name: flink-taskmanager
     networks:
       - datapipeline
@@ -364,3 +370,23 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ============================================================
+  # STREAMLIT — dashboard interactivo (Persona 5)
+  # UI web: http://localhost:8501
+  # ============================================================
+  streamlit:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: streamlit
+    networks:
+      - datapipeline
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./dashboard:/app
+      - ./queries:/app/queries
+    depends_on:
+      mongodb:
+        condition: service_healthy
