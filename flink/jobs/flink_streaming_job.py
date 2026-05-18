@@ -115,7 +115,7 @@ class TrendingMoviesWindowProcess(ProcessWindowFunction):
         self.client.close()
         logger.info("[Trending] Sink MongoDB cerrado")
 
-    def process(self, movie_id, context, elements, collector):
+    def process(self, movie_id, context, elements):
         count = 0
         title = None
         for e in elements:
@@ -134,9 +134,13 @@ class TrendingMoviesWindowProcess(ProcessWindowFunction):
         try:
             self.coll.insert_one(doc)
             logger.info(f"[Trending] movie_id={movie_id} count={count}")
-            collector.collect(doc)
+            return [doc]
         except Exception as exc:
             logger.error(f"[Trending] Error MongoDB: {exc}")
+        return []
+
+    def clear(self, context):
+        pass
 
 
 class GenreActivityWindowProcess(ProcessWindowFunction):
@@ -154,7 +158,7 @@ class GenreActivityWindowProcess(ProcessWindowFunction):
         self.client.close()
         logger.info("[Genre] Sink MongoDB cerrado")
 
-    def process(self, genre, context, elements, collector):
+    def process(self, genre, context, elements):
         count = sum(1 for _ in elements)
         doc = {
             "window_start": _fmt_ts(context.window().start),
@@ -166,9 +170,13 @@ class GenreActivityWindowProcess(ProcessWindowFunction):
         try:
             self.coll.insert_one(doc)
             logger.info(f"[Genre] genre={genre} count={count}")
-            collector.collect(doc)
+            return [doc]
         except Exception as exc:
             logger.error(f"[Genre] Error MongoDB: {exc}")
+        return []
+
+    def clear(self, context):
+        pass
 
 
 class AnomalyDetectionWindowProcess(ProcessWindowFunction):
@@ -187,7 +195,7 @@ class AnomalyDetectionWindowProcess(ProcessWindowFunction):
         self.client.close()
         logger.info("[Anomaly] Sink MongoDB cerrado")
 
-    def process(self, user_id, context, elements, collector):
+    def process(self, user_id, context, elements):
         count = sum(1 for _ in elements)
         if count > 20:
             doc = {
@@ -206,10 +214,13 @@ class AnomalyDetectionWindowProcess(ProcessWindowFunction):
             try:
                 self.coll.insert_one(doc)
                 logger.warning(f"[Anomaly] {doc['message']}")
-                collector.collect(doc)
+                return [doc]
             except Exception as exc:
                 logger.error(f"[Anomaly] Error MongoDB: {exc}")
-        # Si count <= 20 no se genera documento (no es anomalia)
+        return []
+
+    def clear(self, context):
+        pass
 
 
 # ---------------------------------------------------------------------------
