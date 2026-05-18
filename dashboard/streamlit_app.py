@@ -228,25 +228,56 @@ if vista == "🏠 Inicio & Arquitectura":
     with col1:
         st.markdown("### **El Enfoque Híbrido Lambda/Kappa**")
         st.write("""
-        Esta aplicación demuestra cómo resolver dos problemas de datos radicalmente diferentes al mismo tiempo:
-        
-        1. **El Pasado (Capa Batch - Spark SQL + Iceberg + MinIO):**
-           Analizamos millones de calificaciones históricas con el algoritmo ALS de Spark MLlib para predecir qué películas le gustarán a un usuario en el futuro. Tarda minutos, pero es altamente preciso.
-           
-        2. **El Presente (Capa Streaming - Kafka + Flink + MongoDB):**
-           Capturamos los clics y visualizaciones de los usuarios al segundo. Flink calcula ventanas deslizantes y en tiempo de rotación para identificar qué películas son tendencia en los últimos 5 minutos, qué géneros están activos y si hay bots generando spam.
+        Esta plataforma demuestra cómo diseñar e implementar una arquitectura de datos moderna y robusta capaz de resolver dos desafíos fundamentales de manera simultánea:
         """)
         
-        st.image("https://github.com/sdeossag/Recomendacion-Streaming/raw/main/README.md", use_column_width=True, caption="Arquitectura Lambda del Pipeline")
+        # Expandible para la Arquitectura Lakehouse (Batch)
+        with st.expander("📚 Capa Batch (El Pasado) — Arquitectura Medallón en Lakehouse", expanded=True):
+            st.markdown("""
+            El pipeline batch procesa grandes volúmenes de datos históricos (el dataset de **MovieLens con 32 millones de calificaciones**) utilizando **Apache Spark** sobre un **Lakehouse con formato Apache Iceberg** y almacenamiento compatible con S3 (**MinIO**):
+            
+            - **Capa Bronze (Datos Crudos):** Ingesta limpia de los archivos CSV históricos y bases relacionales relativas a usuarios y películas a un bucket de MinIO en formato Iceberg.
+            - **Capa Silver (Limpieza y Enriquecimiento):** Filtrado de duplicados, normalización de ratings (escala 0-1) y parseo/limpieza de géneros y títulos de películas en una tabla unificada y particionada por año.
+            - **Capa Gold (Analítica & ML):**
+              1. **Machine Learning:** Entrenamiento de un modelo de filtrado colaborativo **ALS (Alternating Least Squares)** con Spark MLlib para calcular afinidades de usuarios y predecir su Top 10 de recomendaciones.
+              2. **Consultas de Negocio:** Agregación e índices analíticos de tendencias de géneros por décadas y distribución histórica de calificaciones.
+            """)
+            
+        # Expandible para la Capa de Streaming (El Presente)
+        with st.expander("⚡ Capa Streaming (El Presente) — Procesamiento en Tiempo Real", expanded=True):
+            st.markdown("""
+            Captura y analiza el comportamiento interactivo de los usuarios en tiempo real a medida que hacen clics, reproducen o buscan contenido. El flujo opera continuo y con baja latencia:
+            
+            - **Simulación y Mensajería:** Un simulador genera eventos JSON realistas y los publica en el bus de mensajería **Apache Kafka** en el topic `platform-events`.
+            - **Procesamiento de Flujos con Apache Flink (PyFlink):** Flink consume directamente de Kafka y realiza analíticas complejas mediante ventanas temporales avanzadas:
+              - **Tendencias de Películas:** Ventanas deslizantes (*Sliding Windows*) de **5 minutos** con deslizamiento de 10 segundos para identificar en tiempo real las películas más vistas.
+              - **Actividad por Género:** Ventanas de rotación (*Tumbling Windows*) de **10 minutos** para calcular la distribución de géneros más consumidos en la plataforma.
+              - **Detección de Anomalías (Seguridad):** Algoritmo de filtrado en tiempo real que alerta si un usuario realiza más de 15 interacciones en 10 segundos, detectando bots de spam.
+            - **Persistencia en NoSQL:** Los resultados agregados y alertas de anomalías se insertan en **MongoDB** para que el dashboard los renderice de forma instantánea.
+            """)
+            
+        # Tabla de Stack Tecnológico
+        st.markdown("### **Stack Tecnológico Implementado**")
+        st.markdown("""
+        | Capa del Pipeline | Tecnología Principal | Función y Propósito |
+        | :--- | :--- | :--- |
+        | **Ingesta Histórica** | PostgreSQL | Base de datos de origen para metadatos |
+        | **Capa de Mensajería** | Apache Kafka | Bus de eventos y cola de mensajería distribuida |
+        | **Procesamiento Batch** | Apache Spark | Ingesta, curación de datos y entrenamiento ALS |
+        | **Procesamiento Stream** | Apache Flink | Análisis en tiempo real sobre ventanas y alertas |
+        | **Almacenamiento Batch** | Apache Iceberg + MinIO | Lakehouse transaccional y almacenamiento compatible con S3 |
+        | **Almacenamiento Stream** | MongoDB | Base de datos NoSQL de lectura rápida para analíticas vivas |
+        | **Visualización** | Streamlit | Dashboard unificado para analítica batch e interactiva |
+        """)
         
     with col2:
         st.markdown("### **Integrantes del Equipo**")
         st.info("""
         - **Samuel Henao Castrillón**
-        - **Samuel Deossa Gómez** (Infraestructura y Kafka)
-        - **Juan José Gómez Ramírez** (Apache Flink)
-        - **Samuel Herrera Hoyos** (MongoDB & SQL vs NoSQL)
-        - **Abraham Elías Navarro** (Streamlit & Queries Gold)
+        - **Samuel Deossa Gómez**
+        - **Juan José Gómez Ramírez**
+        - **Samuel Herrera Hoyos**
+        - **Abraham Elías Navarro**
         """)
         
         st.markdown("### **Métricas del Dashboard**")
@@ -285,7 +316,7 @@ elif vista == "🎬 Recomendaciones (Batch)":
         spark_status.markdown("🟢 **Spark:** Conectado")
         
         st.markdown("### **Consulta de Recomendaciones por Usuario**")
-        user_id = st.number_input("Ingresa el ID del Usuario a consultar:", min_value=1, value=1042, step=1)
+        user_id = st.number_input("Ingresa el ID del Usuario a consultar:", min_value=1, value=1, step=1)
         
         if st.button("Consultar Recomendaciones en Gold"):
             with st.spinner("Ejecutando consulta Spark SQL sobre Iceberg..."):

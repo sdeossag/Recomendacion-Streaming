@@ -21,14 +21,14 @@ spark = SparkSession.builder \
 
 spark.sparkContext.setLogLevel("WARN")
 
-print(">>> Limpiando tablas Gold para garantizar ejecucion limpia...")
+print(">>> Limpiando y recreando tablas Gold para garantizar ejecucion limpia con esquema correcto...")
 spark.sql("CREATE NAMESPACE IF NOT EXISTS local.gold")
 for tabla in ["local.gold.recommendations", "local.gold.stats_genre_decade", "local.gold.rating_distribution"]:
     try:
-        spark.sql(f"DELETE FROM {tabla}")
-        print(f"    {tabla} limpiada")
-    except Exception:
-        print(f"    {tabla} no existe aun, se creara")
+        spark.sql(f"DROP TABLE IF EXISTS {tabla}")
+        print(f"    {tabla} eliminada (para recrear)")
+    except Exception as e:
+        print(f"    Error al eliminar {tabla}: {e}")
 
 # ============================================================
 # LEER SILVER
