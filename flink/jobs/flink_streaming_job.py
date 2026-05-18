@@ -23,7 +23,7 @@ KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "platform-events")
 KAFKA_GROUP = os.getenv("KAFKA_GROUP_ID", "flink-movie-platform-consumer")
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://mongodb:27017/")
-MONGO_DB = os.getenv("MONGO_DB", "movie_platform")
+MONGO_DB = os.getenv("MONGO_DB", "streaming_results")
 
 COLL_TRENDING = "trending_movies"
 COLL_GENRE = "genre_activity"

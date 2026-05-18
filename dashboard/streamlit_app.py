@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import time
+from datetime import datetime, timezone
 import plotly.express as px
 import plotly.graph_objects as go
 from pymongo import MongoClient
@@ -139,6 +140,45 @@ def get_cached_mongo():
     except Exception as e:
         st.sidebar.error(f"Error conectando a MongoDB: {e}")
         return None
+
+
+def resolve_live_mongo_db(primary_db):
+    """
+    Usa streaming_results; si está vacío pero movie_platform tiene datos (Flink legacy),
+    lee desde ahí para no dejar el dashboard en blanco en demos.
+    """
+    if primary_db is None:
+        return None, None
+    if primary_db["trending_movies"].estimated_document_count() > 0:
+        return primary_db, "streaming_results"
+    legacy = primary_db.client["movie_platform"]
+    if legacy["trending_movies"].estimated_document_count() > 0:
+        return legacy, "movie_platform"
+    return primary_db, "streaming_results"
+
+
+def trending_to_dataframe(trending_docs):
+    """Convierte documentos de Flink (uno por película) a DataFrame para la UI."""
+    if not trending_docs:
+        return pd.DataFrame()
+    rows = [
+        {
+            "ID Película": doc.get("movie_id"),
+            "Título": doc.get("movie_title") or f"Movie-{doc.get('movie_id')}",
+            "Cantidad de Ratings": doc.get("rating_count", 0),
+        }
+        for doc in trending_docs
+    ]
+    return pd.DataFrame(rows)
+
+
+def genre_activity_to_dataframe(genre_docs):
+    if not genre_docs:
+        return pd.DataFrame()
+    df = pd.DataFrame(genre_docs)
+    if "_id" in df.columns:
+        df = df.rename(columns={"_id": "Género", "total_events": "Total Eventos"})
+    return df
 
 
 # --- Inicializar conexiones ---
@@ -303,72 +343,83 @@ elif vista == "🔥 Streaming en Vivo":
     </div>
     """, unsafe_allow_html=True)
     
-    # Auto-refresco de Streamlit
     col_ctrl1, col_ctrl2 = st.columns([3, 1])
+    with col_ctrl1:
+        refresh_interval = st.slider("Intervalo de auto-refresco (segundos)", 2, 15, 3)
     with col_ctrl2:
-        auto_refresh = st.checkbox("🔄 Auto-refresco (cada 3 seg)", value=True)
-        
+        auto_refresh = st.checkbox("🔄 Auto-refresco", value=True)
+
     if db is None:
         st.error("No se puede mostrar el tiempo real porque MongoDB está desconectado.")
     else:
-        # Ejecutar consultas de MongoDB
-        trending = q_trending_top_k_latest_window(db, k=10)
-        genre_act = q_genre_most_active_in_recent_windows(db, last_n_windows=10)
-        
-        # Alertas de bot/anomalías de Flink
-        # Obtenemos las alertas globales
-        alerts = list(db["anomaly_alerts"].find().sort([("detected_at", -1)]).limit(5))
-        
+        live_db, live_db_name = resolve_live_mongo_db(db)
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        st.caption(f"Última actualización: **{now_utc}** · Base Mongo: `{live_db_name}`")
+
+        n_trend = live_db["trending_movies"].estimated_document_count()
+        n_genre = live_db["genre_activity"].estimated_document_count()
+        n_alerts = live_db["anomaly_alerts"].estimated_document_count()
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Docs trending_movies", n_trend)
+        m2.metric("Docs genre_activity", n_genre)
+        m3.metric("Docs anomaly_alerts", n_alerts)
+
+        if n_trend == 0 and n_genre == 0:
+            st.warning(
+                "MongoDB conectado pero sin datos de streaming. Para la demo: "
+                "1) docker compose up -d  2) python event_simulator.py  "
+                "3) flink run del job en flink/jobs  4) esperar ~5 min y auto-refresco."
+            )
+            if live_db_name == "movie_platform":
+                st.info("Leyendo base legacy movie_platform. Reiniciá Flink con MONGO_DB=streaming_results.")
+
+        trending = q_trending_top_k_latest_window(live_db, k=10)
+        genre_act = q_genre_most_active_in_recent_windows(live_db, last_n_windows=10)
+        alerts = list(live_db["anomaly_alerts"].find().sort([("detected_at", -1)]).limit(5))
+
         col_left, col_right = st.columns([2, 1])
         
         with col_left:
             st.markdown("### 📈 **Trending Movies (Última ventana de 5 min)**")
             if not trending:
-                st.info("Esperando eventos del simulador y cómputo de Flink... Corre `event_simulator.py` para generar datos.")
+                st.info(
+                    "Sin ventana cerrada aún. Flink escribe un documento por película cada 5 min "
+                    "tras recibir eventos del simulador."
+                )
             else:
-                # El top_movies está anidado en el documento de trending_movies
-                latest_doc = trending[0]
-                window_start = latest_doc.get("window_start")
-                window_end = latest_doc.get("window_end")
-                st.caption(f"Ventana activa: **{window_start}** hasta **{window_end}**")
-                
-                # Armar DataFrame
-                movies_list = latest_doc.get("top_movies", [])
-                if not movies_list:
-                    st.write("Ventana vacía.")
-                else:
-                    df_trend = pd.DataFrame(movies_list)
-                    # Traducir columnas
-                    df_trend.columns = ["ID Película", "Título", "Cantidad de Ratings"]
-                    st.dataframe(df_trend, use_container_width=True)
-                    
-                    # Gráfico de barras de trending
-                    fig_trend = px.bar(
-                        df_trend,
-                        x="Cantidad de Ratings",
-                        y="Título",
-                        orientation='h',
-                        title="Películas más reproducidas / calificadas ahora mismo",
-                        color="Cantidad de Ratings",
-                        color_continuous_scale=px.colors.sequential.Reds
-                    )
-                    fig_trend.update_layout(yaxis={'categoryorder':'total ascending'})
-                    st.plotly_chart(fig_trend, use_container_width=True)
+                window_start = trending[0].get("window_start")
+                window_end = trending[0].get("window_end")
+                st.caption(f"Ventana activa: **{window_start}** → **{window_end}**")
+
+                df_trend = trending_to_dataframe(trending)
+                st.dataframe(df_trend, use_container_width=True)
+
+                fig_trend = px.bar(
+                    df_trend,
+                    x="Cantidad de Ratings",
+                    y="Título",
+                    orientation="h",
+                    title="Películas más activas en la última ventana",
+                    color="Cantidad de Ratings",
+                    color_continuous_scale=px.colors.sequential.Reds,
+                )
+                fig_trend.update_layout(yaxis={"categoryorder": "total ascending"})
+                st.plotly_chart(fig_trend, use_container_width=True)
             
             st.markdown("### 📊 **Actividad por Géneros en Tiempo Real**")
-            if not genre_act:
-                st.info("Sin datos de géneros en ventana deslizante.")
+            df_genres = genre_activity_to_dataframe(genre_act)
+            if df_genres.empty:
+                st.info("Sin agregación por género aún (ventana deslizante 10 min en Flink).")
             else:
-                df_genres = pd.DataFrame(genre_act)
-                df_genres.columns = ["Género", "Total Eventos"]
-                
+                st.dataframe(df_genres, use_container_width=True)
                 fig_gen = px.pie(
-                    df_genres, 
-                    values="Total Eventos", 
+                    df_genres,
+                    values="Total Eventos",
                     names="Género",
-                    title="Distribución de visualizaciones por Género (Últimos 10 Minutos)",
+                    title="Eventos por género (últimas ventanas)",
                     hole=0.4,
-                    color_discrete_sequence=px.colors.qualitative.Pastel
+                    color_discrete_sequence=px.colors.qualitative.Pastel,
                 )
                 st.plotly_chart(fig_gen, use_container_width=True)
                 
@@ -390,9 +441,8 @@ elif vista == "🔥 Streaming en Vivo":
                     </div>
                     """, unsafe_allow_html=True)
                     
-        # Lógica de auto-refresco
         if auto_refresh:
-            time.sleep(3)
+            time.sleep(refresh_interval)
             st.rerun()
 
 # --- VISTA 4: ANALISIS DEL CATALOGO (SPARK SQL GOLD) ---

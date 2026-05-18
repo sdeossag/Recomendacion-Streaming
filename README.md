@@ -164,10 +164,7 @@ El procesamiento de streaming en tiempo real se ejecuta en Apache Flink. Con las
 Para iniciar el Job de streaming:
 
 ```bash
-# 1. Copiar el script al volumen montado
-cp flink/flink_streaming_job.py flink/jobs/
-
-# 2. Enviar el Job al clúster de Flink en segundo plano
+# Enviar el job al clúster Flink (script en flink/jobs/)
 docker exec -it flink-jobmanager flink run -d -py /opt/flink/jobs/flink_streaming_job.py
 ```
 
