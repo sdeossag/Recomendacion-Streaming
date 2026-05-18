@@ -1,0 +1,237 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "27a9ef90-f221-47ab-b355-ddbf782aa973",
+  "location" : "s3a://warehouse/gold/stats_genre_decade",
+  "last-sequence-number" : 7,
+  "last-updated-ms" : 1779143606165,
+  "last-column-id" : 4,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "genre",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 2,
+      "name" : "decade",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 3,
+      "name" : "avg_rating",
+      "required" : false,
+      "type" : "double"
+    }, {
+      "id" : 4,
+      "name" : "total_ratings",
+      "required" : false,
+      "type" : "long"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : 1236913176165892734,
+  "refs" : {
+    "main" : {
+      "snapshot-id" : 1236913176165892734,
+      "type" : "branch"
+    }
+  },
+  "snapshots" : [ {
+    "sequence-number" : 1,
+    "snapshot-id" : 6764781053372679713,
+    "timestamp-ms" : 1778817071016,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "app-20260515034431-0000",
+      "added-data-files" : "1",
+      "added-records" : "263",
+      "added-files-size" : "3834",
+      "changed-partition-count" : "1",
+      "total-records" : "263",
+      "total-files-size" : "3834",
+      "total-data-files" : "1",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0"
+    },
+    "manifest-list" : "s3a://warehouse/gold/stats_genre_decade/metadata/snap-6764781053372679713-1-1c545011-8ad7-4855-848a-0cca69715bd1.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 2,
+    "snapshot-id" : 6896807416738105407,
+    "parent-snapshot-id" : 6764781053372679713,
+    "timestamp-ms" : 1779139789179,
+    "summary" : {
+      "operation" : "delete",
+      "spark.app.id" : "app-20260518212942-0000",
+      "deleted-data-files" : "1",
+      "deleted-records" : "263",
+      "removed-files-size" : "3834",
+      "changed-partition-count" : "1",
+      "total-records" : "0",
+      "total-files-size" : "0",
+      "total-data-files" : "0",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0"
+    },
+    "manifest-list" : "s3a://warehouse/gold/stats_genre_decade/metadata/snap-6896807416738105407-1-78fb55f2-b4d8-49a6-a8ec-87cd3d951bc0.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 3,
+    "snapshot-id" : 5708079939864858995,
+    "parent-snapshot-id" : 6896807416738105407,
+    "timestamp-ms" : 1779141057141,
+    "summary" : {
+      "operation" : "delete",
+      "spark.app.id" : "app-20260518215038-0001",
+      "changed-partition-count" : "0",
+      "total-records" : "0",
+      "total-files-size" : "0",
+      "total-data-files" : "0",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0"
+    },
+    "manifest-list" : "s3a://warehouse/gold/stats_genre_decade/metadata/snap-5708079939864858995-1-a8040b35-5b37-43f0-84f2-e804750a5091.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 4,
+    "snapshot-id" : 4949848441631973463,
+    "parent-snapshot-id" : 5708079939864858995,
+    "timestamp-ms" : 1779142215701,
+    "summary" : {
+      "operation" : "delete",
+      "spark.app.id" : "app-20260518221007-0005",
+      "changed-partition-count" : "0",
+      "total-records" : "0",
+      "total-files-size" : "0",
+      "total-data-files" : "0",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0"
+    },
+    "manifest-list" : "s3a://warehouse/gold/stats_genre_decade/metadata/snap-4949848441631973463-1-c70590ad-a315-4dac-a38a-0c59c4817624.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 5,
+    "snapshot-id" : 8081063528562735122,
+    "parent-snapshot-id" : 4949848441631973463,
+    "timestamp-ms" : 1779142678021,
+    "summary" : {
+      "operation" : "delete",
+      "spark.app.id" : "app-20260518221740-0006",
+      "changed-partition-count" : "0",
+      "total-records" : "0",
+      "total-files-size" : "0",
+      "total-data-files" : "0",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0"
+    },
+    "manifest-list" : "s3a://warehouse/gold/stats_genre_decade/metadata/snap-8081063528562735122-1-ac9ad4db-e3fc-4cdb-b9bd-4388526ea299.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 6,
+    "snapshot-id" : 3327399532133336734,
+    "parent-snapshot-id" : 8081063528562735122,
+    "timestamp-ms" : 1779143109104,
+    "summary" : {
+      "operation" : "delete",
+      "spark.app.id" : "app-20260518222454-0008",
+      "changed-partition-count" : "0",
+      "total-records" : "0",
+      "total-files-size" : "0",
+      "total-data-files" : "0",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0"
+    },
+    "manifest-list" : "s3a://warehouse/gold/stats_genre_decade/metadata/snap-3327399532133336734-1-e0c5c3ce-b8a2-4749-aa9c-086292494207.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 7,
+    "snapshot-id" : 1236913176165892734,
+    "parent-snapshot-id" : 3327399532133336734,
+    "timestamp-ms" : 1779143606165,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "app-20260518222454-0008",
+      "added-data-files" : "1",
+      "added-records" : "263",
+      "added-files-size" : "3834",
+      "changed-partition-count" : "1",
+      "total-records" : "263",
+      "total-files-size" : "3834",
+      "total-data-files" : "1",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0"
+    },
+    "manifest-list" : "s3a://warehouse/gold/stats_genre_decade/metadata/snap-1236913176165892734-1-c7a557c6-5f16-4236-aab6-10f9bde07f72.avro",
+    "schema-id" : 0
+  } ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ {
+    "timestamp-ms" : 1778817071016,
+    "snapshot-id" : 6764781053372679713
+  }, {
+    "timestamp-ms" : 1779139789179,
+    "snapshot-id" : 6896807416738105407
+  }, {
+    "timestamp-ms" : 1779141057141,
+    "snapshot-id" : 5708079939864858995
+  }, {
+    "timestamp-ms" : 1779142215701,
+    "snapshot-id" : 4949848441631973463
+  }, {
+    "timestamp-ms" : 1779142678021,
+    "snapshot-id" : 8081063528562735122
+  }, {
+    "timestamp-ms" : 1779143109104,
+    "snapshot-id" : 3327399532133336734
+  }, {
+    "timestamp-ms" : 1779143606165,
+    "snapshot-id" : 1236913176165892734
+  } ],
+  "metadata-log" : [ {
+    "timestamp-ms" : 1778817034167,
+    "metadata-file" : "s3a://warehouse/gold/stats_genre_decade/metadata/v1.metadata.json"
+  }, {
+    "timestamp-ms" : 1778817071016,
+    "metadata-file" : "s3a://warehouse/gold/stats_genre_decade/metadata/v2.metadata.json"
+  }, {
+    "timestamp-ms" : 1779139789179,
+    "metadata-file" : "s3a://warehouse/gold/stats_genre_decade/metadata/v3.metadata.json"
+  }, {
+    "timestamp-ms" : 1779141057141,
+    "metadata-file" : "s3a://warehouse/gold/stats_genre_decade/metadata/v4.metadata.json"
+  }, {
+    "timestamp-ms" : 1779142215701,
+    "metadata-file" : "s3a://warehouse/gold/stats_genre_decade/metadata/v5.metadata.json"
+  }, {
+    "timestamp-ms" : 1779142678021,
+    "metadata-file" : "s3a://warehouse/gold/stats_genre_decade/metadata/v6.metadata.json"
+  }, {
+    "timestamp-ms" : 1779143109104,
+    "metadata-file" : "s3a://warehouse/gold/stats_genre_decade/metadata/v7.metadata.json"
+  } ]
+}

@@ -1,10 +1,10 @@
 {
   "format-version" : 2,
-  "table-uuid" : "b17aa0b9-98f5-4c86-94bd-d8463f008f52",
+  "table-uuid" : "3849ae6a-bb86-42b0-a2a5-1d1cba7a12d1",
   "location" : "s3a://warehouse/gold/recommendations",
   "last-sequence-number" : 0,
-  "last-updated-ms" : 1778816899110,
-  "last-column-id" : 3,
+  "last-updated-ms" : 1779143378041,
+  "last-column-id" : 5,
   "current-schema-id" : 0,
   "schemas" : [ {
     "type" : "struct",
@@ -21,6 +21,16 @@
       "type" : "int"
     }, {
       "id" : 3,
+      "name" : "title",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 4,
+      "name" : "genres",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 5,
       "name" : "predicted_score",
       "required" : false,
       "type" : "double"

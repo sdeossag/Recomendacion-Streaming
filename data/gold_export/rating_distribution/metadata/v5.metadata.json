@@ -1,0 +1,152 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "6c3ce0da-836a-4654-8eee-a46440cb97ee",
+  "location" : "s3a://warehouse/gold/rating_distribution",
+  "last-sequence-number" : 4,
+  "last-updated-ms" : 1779142215976,
+  "last-column-id" : 2,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "rating",
+      "required" : false,
+      "type" : "double"
+    }, {
+      "id" : 2,
+      "name" : "total",
+      "required" : false,
+      "type" : "long"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : 5920521656459062269,
+  "refs" : {
+    "main" : {
+      "snapshot-id" : 5920521656459062269,
+      "type" : "branch"
+    }
+  },
+  "snapshots" : [ {
+    "sequence-number" : 1,
+    "snapshot-id" : 244632425411654172,
+    "timestamp-ms" : 1778817083247,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "app-20260515034431-0000",
+      "added-data-files" : "1",
+      "added-records" : "10",
+      "added-files-size" : "779",
+      "changed-partition-count" : "1",
+      "total-records" : "10",
+      "total-files-size" : "779",
+      "total-data-files" : "1",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0"
+    },
+    "manifest-list" : "s3a://warehouse/gold/rating_distribution/metadata/snap-244632425411654172-1-7c8c6e07-57f7-48a4-8b56-f7ee1aeb5ab5.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 2,
+    "snapshot-id" : 3302593470871920090,
+    "parent-snapshot-id" : 244632425411654172,
+    "timestamp-ms" : 1779139789813,
+    "summary" : {
+      "operation" : "delete",
+      "spark.app.id" : "app-20260518212942-0000",
+      "deleted-data-files" : "1",
+      "deleted-records" : "10",
+      "removed-files-size" : "779",
+      "changed-partition-count" : "1",
+      "total-records" : "0",
+      "total-files-size" : "0",
+      "total-data-files" : "0",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0"
+    },
+    "manifest-list" : "s3a://warehouse/gold/rating_distribution/metadata/snap-3302593470871920090-1-accf0938-957d-41b2-987f-1f68b1ed380f.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 3,
+    "snapshot-id" : 3214116251449691689,
+    "parent-snapshot-id" : 3302593470871920090,
+    "timestamp-ms" : 1779141058172,
+    "summary" : {
+      "operation" : "delete",
+      "spark.app.id" : "app-20260518215038-0001",
+      "changed-partition-count" : "0",
+      "total-records" : "0",
+      "total-files-size" : "0",
+      "total-data-files" : "0",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0"
+    },
+    "manifest-list" : "s3a://warehouse/gold/rating_distribution/metadata/snap-3214116251449691689-1-653d06cf-8538-4adf-9321-c5d74508c8de.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 4,
+    "snapshot-id" : 5920521656459062269,
+    "parent-snapshot-id" : 3214116251449691689,
+    "timestamp-ms" : 1779142215976,
+    "summary" : {
+      "operation" : "delete",
+      "spark.app.id" : "app-20260518221007-0005",
+      "changed-partition-count" : "0",
+      "total-records" : "0",
+      "total-files-size" : "0",
+      "total-data-files" : "0",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0"
+    },
+    "manifest-list" : "s3a://warehouse/gold/rating_distribution/metadata/snap-5920521656459062269-1-9b1aab1f-27d3-4e68-a2d5-d967fc2ae98b.avro",
+    "schema-id" : 0
+  } ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ {
+    "timestamp-ms" : 1778817083247,
+    "snapshot-id" : 244632425411654172
+  }, {
+    "timestamp-ms" : 1779139789813,
+    "snapshot-id" : 3302593470871920090
+  }, {
+    "timestamp-ms" : 1779141058172,
+    "snapshot-id" : 3214116251449691689
+  }, {
+    "timestamp-ms" : 1779142215976,
+    "snapshot-id" : 5920521656459062269
+  } ],
+  "metadata-log" : [ {
+    "timestamp-ms" : 1778817071724,
+    "metadata-file" : "s3a://warehouse/gold/rating_distribution/metadata/v1.metadata.json"
+  }, {
+    "timestamp-ms" : 1778817083247,
+    "metadata-file" : "s3a://warehouse/gold/rating_distribution/metadata/v2.metadata.json"
+  }, {
+    "timestamp-ms" : 1779139789813,
+    "metadata-file" : "s3a://warehouse/gold/rating_distribution/metadata/v3.metadata.json"
+  }, {
+    "timestamp-ms" : 1779141058172,
+    "metadata-file" : "s3a://warehouse/gold/rating_distribution/metadata/v4.metadata.json"
+  } ]
+}

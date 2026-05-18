@@ -1,10 +1,10 @@
 {
   "format-version" : 2,
-  "table-uuid" : "b17aa0b9-98f5-4c86-94bd-d8463f008f52",
+  "table-uuid" : "3849ae6a-bb86-42b0-a2a5-1d1cba7a12d1",
   "location" : "s3a://warehouse/gold/recommendations",
   "last-sequence-number" : 1,
-  "last-updated-ms" : 1778817033839,
-  "last-column-id" : 3,
+  "last-updated-ms" : 1779143561140,
+  "last-column-id" : 5,
   "current-schema-id" : 0,
   "schemas" : [ {
     "type" : "struct",
@@ -21,6 +21,16 @@
       "type" : "int"
     }, {
       "id" : 3,
+      "name" : "title",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 4,
+      "name" : "genres",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 5,
       "name" : "predicted_score",
       "required" : false,
       "type" : "double"
@@ -41,42 +51,42 @@
     "owner" : "root",
     "write.parquet.compression-codec" : "zstd"
   },
-  "current-snapshot-id" : 6303009132116027733,
+  "current-snapshot-id" : 2699979971846794053,
   "refs" : {
     "main" : {
-      "snapshot-id" : 6303009132116027733,
+      "snapshot-id" : 2699979971846794053,
       "type" : "branch"
     }
   },
   "snapshots" : [ {
     "sequence-number" : 1,
-    "snapshot-id" : 6303009132116027733,
-    "timestamp-ms" : 1778817033839,
+    "snapshot-id" : 2699979971846794053,
+    "timestamp-ms" : 1779143561140,
     "summary" : {
       "operation" : "append",
-      "spark.app.id" : "app-20260515034431-0000",
-      "added-data-files" : "24",
-      "added-records" : "1971620",
-      "added-files-size" : "9184753",
+      "spark.app.id" : "app-20260518222454-0008",
+      "added-data-files" : "17",
+      "added-records" : "1971800",
+      "added-files-size" : "13171114",
       "changed-partition-count" : "1",
-      "total-records" : "1971620",
-      "total-files-size" : "9184753",
-      "total-data-files" : "24",
+      "total-records" : "1971800",
+      "total-files-size" : "13171114",
+      "total-data-files" : "17",
       "total-delete-files" : "0",
       "total-position-deletes" : "0",
       "total-equality-deletes" : "0"
     },
-    "manifest-list" : "s3a://warehouse/gold/recommendations/metadata/snap-6303009132116027733-1-68119564-a12c-49ce-b9e9-649ba43e5618.avro",
+    "manifest-list" : "s3a://warehouse/gold/recommendations/metadata/snap-2699979971846794053-1-79c5d4e8-99d3-4cd5-9f9e-3e6facb84e2b.avro",
     "schema-id" : 0
   } ],
   "statistics" : [ ],
   "partition-statistics" : [ ],
   "snapshot-log" : [ {
-    "timestamp-ms" : 1778817033839,
-    "snapshot-id" : 6303009132116027733
+    "timestamp-ms" : 1779143561140,
+    "snapshot-id" : 2699979971846794053
   } ],
   "metadata-log" : [ {
-    "timestamp-ms" : 1778816899110,
+    "timestamp-ms" : 1779143378041,
     "metadata-file" : "s3a://warehouse/gold/recommendations/metadata/v1.metadata.json"
   } ]
 }

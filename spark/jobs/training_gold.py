@@ -87,12 +87,26 @@ spark.sql("""
     CREATE TABLE IF NOT EXISTS local.gold.recommendations (
         userId          INT,
         movieId         INT,
+        title           STRING,
+        genres          STRING,
         predicted_score DOUBLE
     ) USING iceberg
 """)
 
-recom_flat.writeTo("local.gold.recommendations").append()
-print("    Recomendaciones guardadas en Gold")
+# Enriquecer recomendaciones con título y géneros para que el dashboard pueda mostrarlos
+print("    Enriqueciendo recomendaciones con títulos desde Silver...")
+movies_lookup = spark.table("local.silver.ratings_enriched").select("movieId", "title_clean", "genres").dropDuplicates(["movieId"])
+recom_with_meta = recom_flat.join(movies_lookup, on="movieId", how="left") \
+    .select(
+        col("userId"),
+        col("movieId"),
+        col("title_clean").alias("title"),
+        col("genres"),
+        col("predicted_score")
+    )
+
+recom_with_meta.writeTo("local.gold.recommendations").append()
+print("    Recomendaciones enriquecidas y guardadas en Gold")
 
 # ============================================================
 # TABLA GOLD: estadisticas por genero y decada
