@@ -98,7 +98,12 @@ print(f"    Registros en Silver principal: {silver_main.count():,}")
 # SCHEMA EVOLUTION: agregar columna nueva sin reescribir
 # Esto demuestra el feature de Iceberg
 # ============================================================
-print(">>> Escribiendo Silver con Schema Evolution demo...")
+print(">>> Escribiendo Silver con Schema Evolution demo...", flush=True)
+print(
+    "    Append de ~32M filas a Iceberg/MinIO: puede tardar 20-60+ min "
+    "sin más mensajes. Monitoreá CPU en Docker o http://localhost:8081",
+    flush=True,
+)
 
 spark.sql("""
     CREATE TABLE IF NOT EXISTS local.silver.ratings_enriched (
@@ -132,12 +137,17 @@ spark.sql("""
         timestamp BIGINT
     ) USING iceberg
 """)
+try:
+    spark.sql("DELETE FROM local.silver.tags_clean")
+except Exception:
+    pass
 tags_clean.writeTo("local.silver.tags_clean").append()
+print("    Append tags_clean completado.", flush=True)
 
 # ============================================================
 # VERIFICACIONES
 # ============================================================
-print("\n=== VERIFICACIONES SILVER ===")
+print("\n=== VERIFICACIONES SILVER ===", flush=True)
 silver_count = spark.table("local.silver.ratings_enriched").count()
 print(f"Registros en Silver: {silver_count:,}")
 

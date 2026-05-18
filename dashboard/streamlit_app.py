@@ -8,13 +8,16 @@ from pymongo import MongoClient
 
 # Importar las consultas predefinidas
 from queries.gold_queries import (
+    GOLD_PIPELINE_HINT,
+    SPARK_LOCAL_HINT,
     get_spark_session,
+    gold_tables_ready,
     q_user_recommendations,
     q_most_recommended_movies,
     q_top_genre_by_decade,
     q_prediction_diversity_by_user,
     q_rating_distribution_percentage,
-    q_novedad_vs_clasico_recommendations
+    q_novedad_vs_clasico_recommendations,
 )
 from queries.mongo_queries import (
     get_db,
@@ -121,6 +124,8 @@ def get_cached_spark():
         return get_spark_session("CineMetrics-Streamlit")
     except Exception as e:
         st.sidebar.error(f"Error conectando a Spark: {e}")
+        if "JAVA_GATEWAY" in str(e) or "getSubject" in str(e) or "Java" in str(e):
+            st.sidebar.warning(SPARK_LOCAL_HINT)
         return None
 
 @st.cache_resource
@@ -269,7 +274,12 @@ elif vista == "🎬 Recomendaciones (Batch)":
     spark = get_cached_spark()
     
     if spark is None:
-        st.error("No se pudo iniciar la sesión de Spark. Verifica que el contenedor `spark-master` esté activo y que MinIO responda.")
+        st.error(
+            "No se pudo iniciar la sesión de Spark. Verifica que `spark-master` y MinIO "
+            "estén activos (`docker compose ps`)."
+        )
+        with st.expander("Solución habitual en Windows (JAVA_GATEWAY_EXITED)"):
+            st.markdown(SPARK_LOCAL_HINT)
         spark_status.markdown("🔴 **Spark:** Error de Conexión")
     else:
         spark_status.markdown("🟢 **Spark:** Conectado")
@@ -458,10 +468,22 @@ elif vista == "📊 Análisis del Catálogo":
     spark = get_cached_spark()
     
     if spark is None:
-        st.error("No se pudo iniciar la sesión de Spark. Verifica que el contenedor `spark-master` esté activo y que MinIO responda.")
+        st.error(
+            "No se pudo iniciar la sesión de Spark. Verifica que `spark-master` y MinIO "
+            "estén activos (`docker compose ps`)."
+        )
+        with st.expander("Solución habitual en Windows (JAVA_GATEWAY_EXITED)"):
+            st.markdown(SPARK_LOCAL_HINT)
         spark_status.markdown("🔴 **Spark:** Error de Conexión")
     else:
         spark_status.markdown("🟢 **Spark:** Conectado")
+
+        if not gold_tables_ready(spark):
+            st.error(
+                "No existe la tabla `local.gold.recommendations` en Iceberg/MinIO. "
+                "Hay que correr el pipeline Bronze → Silver → Gold antes de usar esta sección."
+            )
+            st.code(GOLD_PIPELINE_HINT, language="text")
         
         st.markdown("### **Consultas de Negocio de Alto Nivel**")
         

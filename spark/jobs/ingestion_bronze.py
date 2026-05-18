@@ -1,7 +1,8 @@
+from pathlib import Path
+
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import lit, current_timestamp, input_file_name, from_unixtime, year, col
 from pyspark.sql.types import StructType, StructField, IntegerType, StringType, LongType, DoubleType
-from datetime import datetime
 
 # ============================================================
 # CONFIGURACION
@@ -68,9 +69,33 @@ tags_schema = StructType([
     StructField("timestamp", LongType(),    True)
 ])
 
-ratings = spark.read.csv(f"{DATA_PATH}/ratings.csv", header=True, schema=ratings_schema)
-movies  = spark.read.csv(f"{DATA_PATH}/movies.csv",  header=True, schema=movies_schema)
-tags    = spark.read.csv(f"{DATA_PATH}/tags.csv",    header=True, schema=tags_schema)
+
+def resolve_csv(name: str) -> str:
+    """
+    Busca ratings.csv / movies.csv / tags.csv en:
+      - /home/jovyan/data/<name>  (montaje directo)
+      - /home/jovyan/data/ml-32m/<name>  (zip descomprimido)
+      - /home/jovyan/data/ml-25m/<name>
+    """
+    base = Path(DATA_PATH)
+    candidates = [base / name, base / "ml-32m" / name, base / "ml-25m" / name]
+    for path in candidates:
+        if path.is_file():
+            return str(path)
+    raise FileNotFoundError(
+        f"No se encontró {name} en {DATA_PATH}. Descargá MovieLens y colocá los CSV en data/ "
+        f"o en data/ml-32m/. Rutas probadas: {[str(p) for p in candidates]}"
+    )
+
+
+ratings_path = resolve_csv("ratings.csv")
+movies_path = resolve_csv("movies.csv")
+tags_path = resolve_csv("tags.csv")
+print(f"Usando CSV: {ratings_path}, {movies_path}, {tags_path}")
+
+ratings = spark.read.csv(ratings_path, header=True, schema=ratings_schema)
+movies = spark.read.csv(movies_path, header=True, schema=movies_schema)
+tags = spark.read.csv(tags_path, header=True, schema=tags_schema)
 
 total_ratings = ratings.count()
 

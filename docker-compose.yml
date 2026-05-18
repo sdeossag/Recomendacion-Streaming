@@ -383,13 +383,31 @@ services:
       context: ./dashboard
       dockerfile: Dockerfile
     container_name: streamlit
+    user: root
+    entrypoint:
+      - bash
+      - -lc
+      - |
+        chown -R 1000:100 /home/jovyan/.ivy2 2>/dev/null || true
+        exec runuser -u jovyan -- streamlit run streamlit_app.py --server.port=8501 --server.address=0.0.0.0
     networks:
       - datapipeline
     ports:
       - "8501:8501"
+    environment:
+      - RUNNING_IN_DOCKER=1
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - MINIO_ENDPOINT=http://minio:9000
+      - MONGO_URI=mongodb://mongodb:27017
     volumes:
       - ./dashboard:/app
       - ./queries:/app/queries
+      - ./spark/conf/spark-defaults.conf:/usr/local/spark/conf/spark-defaults.conf:ro
+      - spark_ivy_cache:/home/jovyan/.ivy2
     depends_on:
       mongodb:
+        condition: service_healthy
+      spark-master:
+        condition: service_started
+      minio:
         condition: service_healthy

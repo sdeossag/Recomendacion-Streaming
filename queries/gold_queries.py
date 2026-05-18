@@ -10,32 +10,156 @@ Las consultas devuelven DataFrames de Pandas, listos para ser mostrados en Strea
 
 from __future__ import annotations
 
+import os
+import re
+import subprocess
+
 import pandas as pd
 from pyspark.sql import SparkSession
 
-# --- Configuración de Conexión ---
-MINIO_ENDPOINT = "http://minio:9000"
-MINIO_USER     = "minioadmin"
-MINIO_PASSWORD = "minioadmin123"
+ICEBERG_PACKAGES = (
+    "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2,"
+    "org.apache.hadoop:hadoop-aws:3.3.4,"
+    "com.amazonaws:aws-java-sdk-bundle:1.12.262"
+)
+
+# Compatibilidad Java 17+ (evita fallos de Subject en drivers locales recientes)
+JAVA17_OPTS = (
+    "-Dio.netty.tryReflectionSetAccessible=true "
+    "--add-opens=java.base/java.lang=ALL-UNNAMED "
+    "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED "
+    "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED "
+    "--add-opens=java.base/java.io=ALL-UNNAMED "
+    "--add-opens=java.base/java.net=ALL-UNNAMED "
+    "--add-opens=java.base/java.nio=ALL-UNNAMED "
+    "--add-opens=java.base/java.util=ALL-UNNAMED "
+    "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED "
+    "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED "
+    "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED "
+    "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED "
+    "--add-opens=java.base/sun.security.action=ALL-UNNAMED "
+    "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED "
+    "--add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED"
+)
+
+SPARK_LOCAL_HINT = (
+    "Streamlit en Windows necesita **JDK 17** (no Java 21/24) y **pyspark==3.5.0**.\n\n"
+    "Opción recomendada — dashboard en Docker (Java ya incluido):\n"
+    "  docker compose up -d spark-master spark-worker minio streamlit\n"
+    "  http://localhost:8501\n\n"
+    "Si preferís local: instalá JDK 17, definí JAVA_HOME y ejecutá:\n"
+    "  pip install \"pyspark==3.5.0\"\n"
+    "  $env:SPARK_MASTER_URL=\"spark://localhost:7077\"\n"
+    "  python -m streamlit run dashboard/streamlit_app.py"
+)
+
+
+def _running_in_docker() -> bool:
+    return os.path.exists("/.dockerenv") or os.getenv("RUNNING_IN_DOCKER") == "1"
+
+
+def _resolve_minio_endpoint() -> str:
+    if os.getenv("MINIO_ENDPOINT"):
+        return os.environ["MINIO_ENDPOINT"]
+    return "http://minio:9000" if _running_in_docker() else "http://localhost:9000"
+
+
+def _resolve_spark_master() -> str:
+    if os.getenv("SPARK_MASTER_URL"):
+        return os.environ["SPARK_MASTER_URL"]
+    if os.getenv("SPARK_MASTER"):
+        return os.environ["SPARK_MASTER"]
+    return "spark://spark-master:7077" if _running_in_docker() else "spark://localhost:7077"
+
+
+MINIO_ENDPOINT = _resolve_minio_endpoint()
+MINIO_USER = os.getenv("MINIO_USER", "minioadmin")
+MINIO_PASSWORD = os.getenv("MINIO_PASSWORD", "minioadmin123")
+
+
+def check_java_for_spark() -> tuple[bool, str]:
+    """Valida que el Java del host sea compatible con PySpark 3.5 + Hadoop."""
+    try:
+        proc = subprocess.run(
+            ["java", "-version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        out = (proc.stderr or "") + (proc.stdout or "")
+    except Exception as exc:
+        return False, f"No se encontró `java` en PATH: {exc}"
+
+    match = re.search(r'version "(\d+)', out)
+    if not match:
+        return False, "No se pudo detectar la versión de Java."
+
+    major = int(match.group(1))
+    if major >= 24:
+        return False, (
+            f"Java {major} no es compatible con Hadoop 3.3 usado por PySpark "
+            "(error getSubject / JAVA_GATEWAY_EXITED). Instalá **JDK 17** o usá "
+            "el contenedor: `docker compose up -d streamlit`."
+        )
+    return True, f"Java {major} detectado."
+
 
 def get_spark_session(app_name: str = "Gold-Queries-Analyst") -> SparkSession:
     """
-    Inicializa o recupera la SparkSession configurada para interactuar
-    con el catálogo Iceberg local sobre MinIO.
-    """
-    return SparkSession.builder \
-        .appName(app_name) \
-        .config("spark.jars.packages",                    "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262") \
-        .config("spark.hadoop.fs.s3a.endpoint",          MINIO_ENDPOINT) \
-        .config("spark.hadoop.fs.s3a.access.key",        MINIO_USER) \
-        .config("spark.hadoop.fs.s3a.secret.key",        MINIO_PASSWORD) \
-        .config("spark.hadoop.fs.s3a.path.style.access", "true") \
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-        .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \
-        .config("spark.sql.catalog.local",               "org.apache.iceberg.spark.SparkCatalog") \
-        .config("spark.sql.catalog.local.type",          "hadoop") \
-        .config("spark.sql.catalog.local.warehouse",     "s3a://warehouse/") \
-        .getOrCreate()
+    SparkSession contra el clúster Docker (spark-master:7077) y catálogo Iceberg en MinIO.
+  """
+    ok, java_msg = check_java_for_spark()
+    if not ok:
+        raise RuntimeError(f"{java_msg}\n\n{SPARK_LOCAL_HINT}")
+
+    master = _resolve_spark_master()
+    builder = SparkSession.builder.appName(app_name).master(master)
+
+    # En Docker usamos spark-defaults.conf + ivy cache compartido con spark-master
+    if not _running_in_docker():
+        builder = builder.config("spark.jars.packages", ICEBERG_PACKAGES)
+
+    builder = (
+        builder
+        .config("spark.hadoop.fs.s3a.endpoint", MINIO_ENDPOINT)
+        .config("spark.hadoop.fs.s3a.access.key", MINIO_USER)
+        .config("spark.hadoop.fs.s3a.secret.key", MINIO_PASSWORD)
+        .config("spark.hadoop.fs.s3a.path.style.access", "true")
+        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+        .config(
+            "spark.sql.extensions",
+            "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
+        )
+        .config("spark.sql.catalog.local", "org.apache.iceberg.spark.SparkCatalog")
+        .config("spark.sql.catalog.local.type", "hadoop")
+        .config("spark.sql.catalog.local.warehouse", "s3a://warehouse/")
+        .config("spark.driver.extraJavaOptions", JAVA17_OPTS)
+        .config("spark.executor.extraJavaOptions", JAVA17_OPTS)
+        .config("spark.driver.memory", "2g")
+        .config("spark.executor.memory", "2g")
+    )
+    if master.startswith("spark://"):
+        builder = builder.config("spark.submit.deployMode", "client")
+
+    return builder.getOrCreate()
+
+
+def gold_tables_ready(spark: SparkSession) -> bool:
+    """True si existen las tablas Iceberg mínimas para el dashboard batch."""
+    try:
+        spark.table("local.gold.recommendations").limit(1).collect()
+        return True
+    except Exception:
+        return False
+
+
+GOLD_PIPELINE_HINT = (
+    "Ejecutá el pipeline batch dentro de spark-master (en orden):\n"
+    "  docker exec -it spark-master spark-submit /home/jovyan/jobs/ingestion_bronze.py\n"
+    "  docker exec -it spark-master spark-submit /home/jovyan/jobs/transformation_silver.py\n"
+    "  docker exec -it spark-master spark-submit /home/jovyan/jobs/training_gold.py\n"
+    "Requisito: ratings.csv y movies.csv en la carpeta data/ del repo."
+)
 
 
 # ==============================================================================

@@ -1,21 +1,26 @@
-FROM python:3.9-slim
+# Misma base que spark-master: Java 11 + Spark 3.5 + dependencias Iceberg vía ivy cache
+FROM jupyter/pyspark-notebook:spark-3.5.0
 
+USER root
 WORKDIR /app
 
-# Instalar dependencias del sistema necesarias para compilar algunas librerias si fuera necesario
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    default-jre-headless \
-    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir \
+    streamlit \
+    pymongo \
+    plotly \
+    matplotlib \
+    pandas
 
-# Configurar Java para PySpark
-ENV JAVA_HOME=/usr/lib/jvm/default-java
+ENV SPARK_HOME=/usr/local/spark \
+    PYTHONPATH=/usr/local/spark/python:/usr/local/spark/python/lib/py4j-0.10.9.7-src.zip \
+    RUNNING_IN_DOCKER=1 \
+    SPARK_MASTER_URL=spark://spark-master:7077 \
+    MINIO_ENDPOINT=http://minio:9000 \
+    SPARK_CONF_DIR=/usr/local/spark/conf \
+    PATH=/opt/conda/bin:/usr/local/spark/bin:${PATH}
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Exponer el puerto de Streamlit
 EXPOSE 8501
 
-# Comando por defecto para correr la app
+USER ${NB_UID}
+
 CMD ["streamlit", "run", "streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0"]
