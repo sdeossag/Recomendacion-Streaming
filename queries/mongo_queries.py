@@ -1,5 +1,5 @@
 """
-ST1630 — Persona 4: consultas operacionales sobre MongoDB y utilidades de benchmark.
+ST1630 — Consultas operacionales sobre MongoDB y utilidades de benchmark.
 
 Requisitos:
     pip install pymongo
@@ -31,7 +31,7 @@ COLL_TRENDING = "trending_movies"
 COLL_GENRE = "genre_activity"
 COLL_ANOMALY = "anomaly_alerts"
 
-# Colección materializada para comparativa PK vs PostgreSQL (Persona 4)
+# Colección materializada para comparativa PK vs PostgreSQL
 COLL_GOLD_RECOS = "gold_user_recommendations"
 
 

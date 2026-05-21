@@ -1,0 +1,37 @@
+ST1630 — MongoDB (streaming) y comparativa empírica SQL vs NoSQL
+
+=== ARTEFACTOS ===
+- queries/mongo_queries.py
+- notebooks/comparativa_sql_nosql.ipynb
+- Integración Streamlit: pestaña "Streaming en Vivo" (mongo_queries)
+- Ingesta Flink: trending_movies, genre_activity, anomaly_alerts → streaming_results
+
+=== CONSULTAS OPERACIONALES (streaming_results) ===
+1) q_trending_top_k_latest_window
+2) q_genre_most_active_in_recent_windows
+3) q_anomaly_alerts_for_user
+4) q_recommendations_for_user (gold_user_recommendations)
+
+=== ÍNDICES (ensure_operational_indexes) ===
+- trending_movies: (window_end↓, rating_count↓), (movie_id, window_end↓)
+- genre_activity: (genre, window_end↓), (window_end↓)
+- anomaly_alerts: (user_id, detected_at↓)
+- gold_user_recommendations: user_id UNIQUE
+
+=== BENCHMARK (n=10, 2 warm-ups; Docker local) ===
+Latencias (ms, media ± σ):
+| Lectura por user_id              | 1.46 ± 0.31  | 0.36 ± 0.07  |
+| Filtro + SUM por género          | 1.66 ± 0.21  | 1.33 ± 0.15  |
+| JOIN recomendaciones ↔ película  | 1.76 ± 0.27  | 0.70 ± 0.14  |
+  (columnas: MongoDB | PostgreSQL)
+
+Throughput 20 000 filas:
+| MongoDB insert_many   | 102 993 filas/s (σ 13 226) |
+| PostgreSQL batch      |  43 598 filas/s (σ  4 577) |
+
+=== REPRODUCIR ===
+docker compose up -d mongodb postgresql
+pip install pymongo psycopg2-binary pandas matplotlib
+jupyter notebook notebooks/comparativa_sql_nosql.ipynb
+
+Salida detallada: comparativa_sql_nosql.ipynb (celda benchmarks).

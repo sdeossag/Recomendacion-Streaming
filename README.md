@@ -26,8 +26,9 @@ Recomendacion-Streaming/
 ├── flink/
 │   └── jobs/                   ← Persona 2: flink_streaming_job.py
 │
-├── notebooks/                  ← Persona 4: comparativa_sql_nosql.ipynb
-├── queries/                    ← Personas 4 y 5: mongo_queries.py, gold_queries.py
+├── notebooks/                  ← comparativa_sql_nosql.ipynb (Mongo vs PostgreSQL)
+├── queries/                    ← mongo_queries.py, gold_queries.py
+├── Evidencias_mongodb_comparativa.txt  ← benchmarks Mongo vs SQL
 ├── dashboard/                  ← Persona 5: streamlit_app.py
 └── data/                       ← Dataset MovieLens (NO sube a GitHub, cada uno lo descarga)
 ```
@@ -270,27 +271,105 @@ gold_path   = "s3a://gold/recommendations"
 
 Los scripts van en `spark/jobs/` y aparecen en Jupyter bajo la carpeta `jobs/`.
 
-### Persona 4 — MongoDB y PostgreSQL
+### MongoDB y comparativa SQL vs NoSQL
+
+Consultas operacionales, índices y benchmarks en [`queries/mongo_queries.py`](queries/mongo_queries.py). Comparativa empírica con PostgreSQL en [`notebooks/comparativa_sql_nosql.ipynb`](notebooks/comparativa_sql_nosql.ipynb). Resumen de mediciones: [`Evidencias_mongodb_comparativa.txt`](Evidencias_mongodb_comparativa.txt).
+
+| Capa | Uso de MongoDB |
+|------|----------------|
+| **Streaming (Flink)** | Resultados en tiempo real: trending, género, anomalías |
+| **Batch (réplica Gold)** | Materialización de recomendaciones por usuario para pruebas de lectura PK |
+| **Dashboard** | Pestaña **Streaming en Vivo** en Streamlit vía `mongo_queries.py` |
+| **Comparativa** | Misma carga y mismas preguntas en MongoDB y PostgreSQL |
+
+Base de datos: **`streaming_results`** en `mongodb://localhost:27017`.
+
+#### Colecciones y origen de datos
+
+| Colección | Escritor | Uso |
+|-----------|--------|-----|
+| `trending_movies` | Flink (ventana 5 min) | Top películas por `rating_count` en la última ventana |
+| `genre_activity` | Flink (ventana deslizante) | Eventos agregados por `genre` |
+| `anomaly_alerts` | Flink (sesión) | Usuarios con >20 ratings en 2 min (`RATING_BURST`) |
+| `gold_user_recommendations` | Notebook comparativa | 1 documento por `user_id` con lista `items[]` (réplica Gold para PK) |
+
+#### Consultas operacionales implementadas (≥3)
+
+Definidas en `mongo_queries.py` y usadas en el notebook / dashboard:
+
+1. **`q_trending_top_k_latest_window(db, k)`** — Top-K en la ventana con mayor `window_end`.
+2. **`q_genre_most_active_in_recent_windows(db, last_n_windows)`** — Pipeline `$group` + `$sum` por género.
+3. **`q_anomaly_alerts_for_user(db, user_id)`** — Historial de alertas por usuario.
+4. **`q_recommendations_for_user(db, user_id)`** — Lectura por clave lógica en `gold_user_recommendations`.
+
+Índices alineados a esas consultas: `ensure_operational_indexes(db)` (trending, genre, anomaly, gold PK única).
+
+#### Resultados concretos — benchmark SQL vs NoSQL
+
+Ejecutado en `notebooks/comparativa_sql_nosql.ipynb` (protocolo: **10 repeticiones**, **2 warm-ups**, latencias en **ms**, throughput en **filas/s**). Salida guardada en el propio notebook.
+
+**Latencias (media ± desviación estándar):**
+
+| Experimento | MongoDB (ms) | PostgreSQL (ms) |
+|-------------|--------------|-----------------|
+| Lectura por `user_id` (clave lógica / PK) | 1.46 ± 0.31 | **0.36 ± 0.07** |
+| Filtro + `SUM` por género | 1.66 ± 0.21 | **1.33 ± 0.15** |
+| JOIN recomendaciones ↔ dimensión película | 1.76 ± 0.27 | **0.70 ± 0.14** |
+
+**Throughput — inserción masiva de 20 000 filas (10 corridas):**
+
+| Motor | Filas/segundo (media) | σ |
+|-------|------------------------|---|
+| MongoDB (`insert_many` por lotes) | **102 993** | 13 226 |
+| PostgreSQL (`execute_batch`) | 43 598 | 4 577 |
+
+**Conclusiones documentadas (muestra local Docker):**
+
+- **Lectura puntual por usuario:** PostgreSQL fue más rápido con índice B-tree; Mongo compensa con un solo round-trip cuando el documento ya está materializado por usuario.
+- **Agregación por género:** Rendimiento similar; ambos se benefician de filtro por ventana temporal.
+- **JOIN:** PostgreSQL fue ~2.5× más rápido; en Mongo el equivalente es `$lookup` (más costoso que JOIN relacional).
+- **Carga masiva:** Mongo alcanzó ~2.4× el throughput de PostgreSQL en esta prueba con lotes de 1 500 filas.
+
+#### Cómo reproducir
+
+```bash
+# 1. Infraestructura
+docker compose up -d mongodb postgresql
+
+# 2. Dependencias locales (notebook)
+pip install pymongo psycopg2-binary pandas matplotlib
+
+# 3. Notebook completo (consultas + benchmarks + gráficos)
+jupyter notebook notebooks/comparativa_sql_nosql.ipynb
+```
+
+Consultas rápidas desde Python (streaming ya con datos de Flink):
 
 ```python
-# MongoDB desde tu PC
-from pymongo import MongoClient
-client = MongoClient("mongodb://localhost:27017")
-db = client["streaming_results"]
+from queries.mongo_queries import (
+    get_db, ensure_operational_indexes,
+    q_trending_top_k_latest_window,
+    q_genre_most_active_in_recent_windows,
+    q_anomaly_alerts_for_user,
+)
 
-# Colecciones disponibles:
-# db.trending_movies   — ranking cada 5 minutos
-# db.genre_activity    — actividad por género (ventana 10min)
-# db.anomaly_alerts    — alertas de bots
+db = get_db("mongodb://localhost:27017", "streaming_results")
+ensure_operational_indexes(db)
+print(q_trending_top_k_latest_window(db, k=5))
+print(q_genre_most_active_in_recent_windows(db, last_n_windows=10))
+print(q_anomaly_alerts_for_user(db, user_id=179, limit=5))
+```
 
-# PostgreSQL desde tu PC
+PostgreSQL (réplica relacional para la comparativa):
+
+```python
 import psycopg2
 conn = psycopg2.connect(
     host="localhost", port=5432,
-    database="movielens",
-    user="postgres", password="postgres123"
+    database="movielens", user="postgres", password="postgres123",
 )
 ```
+
 
 ### Persona 5 — Streamlit
 
@@ -335,7 +414,7 @@ Cada persona trabaja en su propia carpeta → no hay conflictos.
 6. Abrir http://localhost:8888 — correr pipeline batch de Spark (Bronze → Silver → Gold)
 7. Abrir http://localhost:9001 — ver archivos en MinIO (capas bronze, silver, gold)
 8. Mostrar dashboard Streamlit con recomendaciones + trending en tiempo real
-9. Mostrar comparativa SQL vs NoSQL en Jupyter
+9. Streamlit *Streaming en Vivo* (Mongo) + notebook `comparativa_sql_nosql.ipynb` (latencias, throughput; ver `Evidencias_mongodb_comparativa.txt`)
 
 ---
 
