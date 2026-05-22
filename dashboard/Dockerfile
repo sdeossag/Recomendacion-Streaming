@@ -5,7 +5,8 @@ USER root
 WORKDIR /app
 
 RUN pip install --no-cache-dir \
-    streamlit \
+    "streamlit>=1.33" \
+    streamlit-autorefresh \
     pymongo \
     plotly \
     matplotlib \

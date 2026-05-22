@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 import plotly.express as px
 import plotly.graph_objects as go
 from pymongo import MongoClient
@@ -23,8 +24,15 @@ from queries.mongo_queries import (
     get_db,
     q_trending_top_k_latest_window,
     q_genre_most_active_in_recent_windows,
-    q_anomaly_alerts_for_user
+    q_recent_anomaly_alerts,
+    q_anomaly_alerts_since_minutes,
+    q_latest_anomaly_alert,
 )
+
+try:
+    from streamlit_autorefresh import st_autorefresh
+except ImportError:
+    st_autorefresh = None
 
 # --- Configuración de la Página ---
 st.set_page_config(
@@ -149,17 +157,43 @@ def get_cached_mongo():
 
 def resolve_live_mongo_db(primary_db):
     """
-    Usa streaming_results; si está vacío pero movie_platform tiene datos (Flink legacy),
-    lee desde ahí para no dejar el dashboard en blanco en demos.
+    Siempre prioriza streaming_results si tiene datos de Flink (trending, género o alertas).
+    Evita leer solo movie_platform legacy y dejar anomaly_alerts en 0.
     """
     if primary_db is None:
         return None, None
-    if primary_db["trending_movies"].estimated_document_count() > 0:
-        return primary_db, "streaming_results"
+    streaming = primary_db.client["streaming_results"]
+    has_streaming = any(
+        streaming[coll].estimated_document_count() > 0
+        for coll in ("trending_movies", "genre_activity", "anomaly_alerts")
+    )
+    if has_streaming:
+        return streaming, "streaming_results"
     legacy = primary_db.client["movie_platform"]
     if legacy["trending_movies"].estimated_document_count() > 0:
         return legacy, "movie_platform"
-    return primary_db, "streaming_results"
+    return streaming, "streaming_results"
+
+
+def _parse_detected_at(value):
+    """Convierte detected_at (ISO str o datetime) a datetime UTC aware."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return None
+
+
+def _seconds_since_detection(alert: dict) -> Optional[float]:
+    detected = _parse_detected_at(alert.get("detected_at"))
+    if detected is None:
+        return None
+    return (datetime.now(timezone.utc) - detected).total_seconds()
 
 
 def trending_to_dataframe(trending_docs):
@@ -383,108 +417,157 @@ elif vista == "🔥 Streaming en Vivo":
         <p>Datos analíticos en tiempo real consumidos directamente de MongoDB. Actualizado dinámicamente cada pocos segundos.</p>
     </div>
     """, unsafe_allow_html=True)
-    
-    col_ctrl1, col_ctrl2 = st.columns([3, 1])
+
+    col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([2, 1, 1])
     with col_ctrl1:
         refresh_interval = st.slider("Intervalo de auto-refresco (segundos)", 2, 15, 3)
     with col_ctrl2:
         auto_refresh = st.checkbox("🔄 Auto-refresco", value=True)
+    with col_ctrl3:
+        if st.button("Actualizar ahora", type="primary"):
+            st.session_state.streaming_show_charts = True
+            st.rerun()
+
+    # Cada rerun de esta pestaña incrementa el poll (autorefresh al final dispara reruns).
+    st.session_state.live_poll_count = st.session_state.get("live_poll_count", 0) + 1
+    poll_n = st.session_state.live_poll_count
+    tick_unix = int(time.time())
 
     if db is None:
         st.error("No se puede mostrar el tiempo real porque MongoDB está desconectado.")
     else:
         live_db, live_db_name = resolve_live_mongo_db(db)
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        st.caption(f"Última actualización: **{now_utc}** · Base Mongo: `{live_db_name}`")
+        st.caption(
+            f"Última lectura Mongo: **{now_utc}** · tick `{tick_unix}` · "
+            f"Poll **#{poll_n}** · Base `{live_db_name}`"
+        )
 
         n_trend = live_db["trending_movies"].estimated_document_count()
         n_genre = live_db["genre_activity"].estimated_document_count()
-        n_alerts = live_db["anomaly_alerts"].estimated_document_count()
+        n_alerts = live_db["anomaly_alerts"].count_documents({})
+
+        prev_alerts = st.session_state.get("prev_alert_total")
+        delta_alerts = None
+        if prev_alerts is not None:
+            diff = n_alerts - prev_alerts
+            # Streamlit muestra "↑ 0" si delta=0; solo indicar cuando subió el total.
+            if diff > 0:
+                delta_alerts = diff
+        st.session_state.prev_alert_total = n_alerts
 
         m1, m2, m3 = st.columns(3)
-        m1.metric("Docs trending_movies", n_trend)
-        m2.metric("Docs genre_activity", n_genre)
-        m3.metric("Docs anomaly_alerts", n_alerts)
+        m1.metric("Docs trending_movies (≈)", n_trend)
+        m2.metric("Docs genre_activity (≈)", n_genre)
+        m3.metric("Docs anomaly_alerts", n_alerts, delta=delta_alerts)
 
-        if n_trend == 0 and n_genre == 0:
-            st.warning(
-                "MongoDB conectado pero sin datos de streaming. Para la demo: "
-                "1) docker compose up -d  2) python event_simulator.py  "
-                "3) flink run del job en flink/jobs  4) esperar ~5 min y auto-refresco."
+        latest_doc = q_latest_anomaly_alert(live_db)
+        alerts = q_recent_anomaly_alerts(live_db, limit=8)
+        cutoff_10m = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+        n_alerts_10m = live_db["anomaly_alerts"].count_documents(
+            {"detected_at": {"$gte": cutoff_10m}}
+        )
+
+        latest_id = str(latest_doc["_id"]) if latest_doc else None
+        if latest_id and latest_id != st.session_state.get("latest_alert_oid"):
+            st.toast(
+                f"Nueva alerta — usuario {latest_doc.get('user_id')}",
+                icon="🚨",
             )
-            if live_db_name == "movie_platform":
-                st.info("Leyendo base legacy movie_platform. Reiniciá Flink con MONGO_DB=streaming_results.")
+            st.session_state.latest_alert_oid = latest_id
 
-        trending = q_trending_top_k_latest_window(live_db, k=10)
-        genre_act = q_genre_most_active_in_recent_windows(live_db, last_n_windows=10)
-        alerts = list(live_db["anomaly_alerts"].find().sort([("detected_at", -1)]).limit(5))
+        st.markdown("### 🚨 **Detección de Anomalías (Flink)**")
+        st.caption(
+            f"Alertas últimos 10 min: **{n_alerts_10m}** · "
+            "Flink: ventana tumbling 1 min, umbral >20 ratings/usuario."
+        )
 
-        col_left, col_right = st.columns([2, 1])
-        
-        with col_left:
-            st.markdown("### 📈 **Trending Movies (Última ventana de 5 min)**")
-            if not trending:
-                st.info(
-                    "Sin ventana cerrada aún. Flink escribe un documento por película cada 5 min "
-                    "tras recibir eventos del simulador."
+        if not alerts:
+            st.success("✅ Sin alertas en Mongo.")
+        else:
+            for alert in alerts[:5]:
+                secs = _seconds_since_detection(alert)
+                age_label = (
+                    f"hace {int(secs)} s"
+                    if secs is not None and secs < 120
+                    else (f"hace {int(secs / 60)} min" if secs is not None else "")
                 )
-            else:
-                window_start = trending[0].get("window_start")
-                window_end = trending[0].get("window_end")
-                st.caption(f"Ventana activa: **{window_start}** → **{window_end}**")
-
-                df_trend = trending_to_dataframe(trending)
-                st.dataframe(df_trend, use_container_width=True)
-
-                fig_trend = px.bar(
-                    df_trend,
-                    x="Cantidad de Ratings",
-                    y="Título",
-                    orientation="h",
-                    title="Películas más activas en la última ventana",
-                    color="Cantidad de Ratings",
-                    color_continuous_scale=px.colors.sequential.Reds,
-                )
-                fig_trend.update_layout(yaxis={"categoryorder": "total ascending"})
-                st.plotly_chart(fig_trend, use_container_width=True)
-            
-            st.markdown("### 📊 **Actividad por Géneros en Tiempo Real**")
-            df_genres = genre_activity_to_dataframe(genre_act)
-            if df_genres.empty:
-                st.info("Sin agregación por género aún (ventana deslizante 10 min en Flink).")
-            else:
-                st.dataframe(df_genres, use_container_width=True)
-                fig_gen = px.pie(
-                    df_genres,
-                    values="Total Eventos",
-                    names="Género",
-                    title="Eventos por género (últimas ventanas)",
-                    hole=0.4,
-                    color_discrete_sequence=px.colors.qualitative.Pastel,
-                )
-                st.plotly_chart(fig_gen, use_container_width=True)
-                
-        with col_right:
-            st.markdown("### 🚨 **Detección de Anomalías (Flink)**")
-            st.write("Flink analiza si un usuario genera más de 20 ratings en menos de 2 minutos, lo cual indica comportamiento automatizado (bots).")
-            
-            if not alerts:
-                st.success("✅ Todo en orden. No hay alertas de bots activas en este momento.")
-            else:
-                for alert in alerts:
-                    st.markdown(f"""
-                    <div class="alert-card">
-                        <div class="alert-card-title">⚠️ BOT ALERT - ID USUARIO: {alert.get('user_id')}</div>
+                is_fresh = secs is not None and secs < 300
+                border = "#dc2626" if is_fresh else "#f43f5e"
+                st.markdown(
+                    f"""
+                    <div class="alert-card" style="border-left-color: {border};">
+                        <div class="alert-card-title">⚠️ BOT ALERT — usuario {alert.get('user_id')}</div>
                         <div class="alert-card-desc">
-                            <strong>Eventos detectados:</strong> {alert.get('event_count')}<br>
-                            <strong>Hora de detección:</strong> {alert.get('detected_at')}
+                            <strong>Ratings en sesión:</strong> {alert.get('event_count')}<br>
+                            <strong>Detectado:</strong> {alert.get('detected_at')} ({age_label})<br>
+                            <strong>Sesión:</strong> {alert.get('session_start')} → {alert.get('session_end')}
                         </div>
                     </div>
-                    """, unsafe_allow_html=True)
-                    
-        if auto_refresh:
-            time.sleep(refresh_interval)
-            st.rerun()
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+    # Gráficos solo en carga manual o primera visita (evita bloquear cada autorefresh).
+    show_charts = st.session_state.get("streaming_show_charts", True)
+    if st.button("Actualizar gráficos (trending / géneros)"):
+        st.session_state.streaming_show_charts = True
+        show_charts = True
+
+    st.markdown("---")
+
+    if db is not None and show_charts:
+        live_db_charts, _ = resolve_live_mongo_db(db)
+        trending = q_trending_top_k_latest_window(live_db_charts, k=10)
+        genre_act = q_genre_most_active_in_recent_windows(live_db_charts, last_n_windows=10)
+
+        st.markdown("### 📈 **Trending Movies (Última ventana de 5 min)**")
+        if not trending:
+            st.info("Sin ventana cerrada aún (Flink escribe cada ~5 min).")
+        else:
+            window_start = trending[0].get("window_start")
+            window_end = trending[0].get("window_end")
+            st.caption(f"Ventana: **{window_start}** → **{window_end}**")
+            df_trend = trending_to_dataframe(trending)
+            st.dataframe(df_trend, use_container_width=True)
+            fig_trend = px.bar(
+                df_trend,
+                x="Cantidad de Ratings",
+                y="Título",
+                orientation="h",
+                title="Películas más activas en la última ventana",
+                color="Cantidad de Ratings",
+                color_continuous_scale=px.colors.sequential.Reds,
+            )
+            fig_trend.update_layout(yaxis={"categoryorder": "total ascending"})
+            st.plotly_chart(fig_trend, use_container_width=True)
+
+        st.markdown("### 📊 **Actividad por Géneros**")
+        df_genres = genre_activity_to_dataframe(genre_act)
+        if df_genres.empty:
+            st.info("Sin agregación por género aún.")
+        else:
+            st.dataframe(df_genres, use_container_width=True)
+            fig_gen = px.pie(
+                df_genres,
+                values="Total Eventos",
+                names="Género",
+                title="Eventos por género (últimas ventanas)",
+                hole=0.4,
+                color_discrete_sequence=px.colors.qualitative.Pastel,
+            )
+            st.plotly_chart(fig_gen, use_container_width=True)
+        st.session_state.streaming_show_charts = False
+
+    # Refresco fiable: debounce=False (el default True bloquea si moviste el slider).
+    if auto_refresh and st_autorefresh is not None:
+        st_autorefresh(
+            interval=refresh_interval * 1000,
+            debounce=False,
+            key="streaming_live_refresh",
+        )
+    elif auto_refresh:
+        st.caption("Instalá streamlit-autorefresh o reconstruí el contenedor streamlit.")
 
 # --- VISTA 4: ANALISIS DEL CATALOGO (SPARK SQL GOLD) ---
 elif vista == "📊 Análisis del Catálogo":
