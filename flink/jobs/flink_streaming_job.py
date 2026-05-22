@@ -12,7 +12,6 @@ from pyflink.datastream.functions import FlatMapFunction, ProcessWindowFunction
 from pyflink.datastream.window import (
     TumblingEventTimeWindows,
     SlidingEventTimeWindows,
-    EventTimeSessionWindows,
 )
 
 # ---------------------------------------------------------------------------
@@ -32,6 +31,8 @@ COLL_ANOMALY = "anomaly_alerts"
 CHECKPOINT_INTERVAL_MS = 30_000      # 30 segundos
 MAX_OUT_OF_ORDERNESS_MS = 30_000     # watermark tolerance
 IDLENESS_MS = 60_000                 # idle source timeout
+ANOMALY_WINDOW_MINUTES = int(os.getenv("ANOMALY_WINDOW_MINUTES", "1"))
+ANOMALY_RATING_THRESHOLD = int(os.getenv("ANOMALY_RATING_THRESHOLD", "20"))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -181,9 +182,10 @@ class GenreActivityWindowProcess(ProcessWindowFunction):
 
 class AnomalyDetectionWindowProcess(ProcessWindowFunction):
     """
-    Ventana de Sesion con gap de 2 minutos keyed by user_id.
-    Solo analiza eventos de tipo 'rating'.
-    Si una sesion acumula >20 eventos, genera alerta en MongoDB.
+    Ventana tumbling por user_id (event time).
+    Cuenta ratings por usuario en cada ventana de N minutos.
+    Si supera el umbral, inserta alerta en MongoDB.
+    (Tumbling es más estable en demo que session windows con gap.)
     """
 
     def open(self, runtime_context):
@@ -197,16 +199,16 @@ class AnomalyDetectionWindowProcess(ProcessWindowFunction):
 
     def process(self, user_id, context, elements):
         count = sum(1 for _ in elements)
-        if count > 20:
+        if count > ANOMALY_RATING_THRESHOLD:
             doc = {
                 "user_id": user_id,
                 "session_start": _fmt_ts(context.window().start),
                 "session_end": _fmt_ts(context.window().end),
                 "event_count": count,
                 "alert_type": "RATING_BURST",
-                "threshold": 20,
+                "threshold": ANOMALY_RATING_THRESHOLD,
                 "message": (
-                    f"Usuario {user_id} emitio {count} ratings en sesion "
+                    f"Usuario {user_id} emitio {count} ratings en ventana "
                     f"({_fmt_ts(context.window().start)} -> {_fmt_ts(context.window().end)})"
                 ),
                 "detected_at": datetime.now(timezone.utc).isoformat(),
@@ -313,14 +315,14 @@ def main():
     )
 
     # -----------------------------------------------------------------------
-    # 5. BRANCH 3 — Anomaly Detection (Session 2 min gap)
+    # 5. BRANCH 3 — Anomaly Detection (Tumbling 1 min por usuario)
     # -----------------------------------------------------------------------
     ratings_only = event_stream.filter(lambda e: e.get("event_type") == "rating")
 
     anomaly_stream = (
         ratings_only
         .key_by(lambda e: e["user_id"])
-        .window(EventTimeSessionWindows.with_gap(Time.minutes(2)))
+        .window(TumblingEventTimeWindows.of(Time.minutes(ANOMALY_WINDOW_MINUTES)))
         .process(
             AnomalyDetectionWindowProcess(),
             output_type=Types.PICKLED_BYTE_ARRAY(),
@@ -336,6 +338,8 @@ def main():
     logger.info(f"MongoDB: {MONGO_URI} / db={MONGO_DB}")
     logger.info("Checkpoint interval: 30s")
     logger.info("Watermark delay: 30s")
+    logger.info(f"Anomaly tumbling window: {ANOMALY_WINDOW_MINUTES} min")
+    logger.info(f"Anomaly rating threshold: {ANOMALY_RATING_THRESHOLD}")
     logger.info("========================================")
 
     env.execute("Movie Platform Streaming Job")

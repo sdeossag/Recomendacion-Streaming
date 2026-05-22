@@ -256,6 +256,8 @@ services:
     environment:
       - MONGO_URI=mongodb://mongodb:27017/
       - MONGO_DB=streaming_results
+      - ANOMALY_WINDOW_MINUTES=1
+      - ANOMALY_RATING_THRESHOLD=20
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - |
         FLINK_PROPERTIES=
