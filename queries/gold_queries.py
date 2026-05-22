@@ -176,8 +176,8 @@ def q_user_recommendations(spark: SparkSession, user_id: int, limit: int = 10) -
         SELECT 
             r.userId as user_id, 
             r.movieId as movie_id, 
-            COALESCE(r.title, m.title_clean) as title, 
-            COALESCE(r.genres, m.genres) as genres, 
+            m.title_clean as title, 
+            m.genres as genres, 
             r.predicted_score as predicted_score
         FROM local.gold.recommendations r
         LEFT JOIN (
@@ -204,8 +204,8 @@ def q_most_recommended_movies(spark: SparkSession, limit: int = 10) -> pd.DataFr
     query = f"""
         SELECT 
             r.movieId as movie_id, 
-            COALESCE(r.title, m.title_clean) as title, 
-            COALESCE(r.genres, m.genres) as genres, 
+            m.title_clean as title, 
+            m.genres as genres, 
             COUNT(*) as times_recommended, 
             ROUND(AVG(r.predicted_score), 3) as avg_predicted_score
         FROM local.gold.recommendations r
@@ -213,7 +213,7 @@ def q_most_recommended_movies(spark: SparkSession, limit: int = 10) -> pd.DataFr
             SELECT DISTINCT movieId, title_clean, genres 
             FROM local.silver.ratings_enriched
         ) m ON r.movieId = m.movieId
-        GROUP BY r.movieId, COALESCE(r.title, m.title_clean), COALESCE(r.genres, m.genres)
+        GROUP BY r.movieId, m.title_clean, m.genres
         ORDER BY times_recommended DESC, avg_predicted_score DESC
         LIMIT {limit}
     """
