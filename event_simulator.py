@@ -13,6 +13,7 @@ Correr:
     python event_simulator.py
 """
 
+import argparse
 import json
 import os
 import random
@@ -30,6 +31,9 @@ TOPIC_NAME = "platform-events"
 
 # Cuántos eventos por segundo genera el simulador
 EVENTS_PER_SECOND = 5
+
+# Cada cuántos segundos forzar un burst de bot (demo en vivo / dashboard)
+BOT_BURST_EVERY_SEC = int(os.getenv("BOT_BURST_EVERY_SEC", "60"))
 
 # ============================================================
 # DATOS DE DOMINIO — películas y géneros reales de MovieLens
@@ -109,18 +113,23 @@ USER_PROFILES = {
 # IDs de usuarios (tomados del rango real de MovieLens)
 USER_IDS = list(range(1, 501))  # 500 usuarios simulados
 
+# Usuario dedicado a demos de bot: no participa del tráfico normal para que
+# Flink cierre la ventana de sesión sin ratings extra que la prolonguen.
+BOT_USER_ID = 99999
+NORMAL_USER_IDS = [uid for uid in USER_IDS if uid != BOT_USER_ID]
+
 # Asignar perfil a cada usuario
 USER_PROFILE_MAP = {
     uid: random.choice(list(USER_PROFILES.keys()))
-    for uid in USER_IDS
+    for uid in USER_IDS + [BOT_USER_ID]
 }
 
 # ============================================================
 # ESTADO DE SESIÓN — para detectar anomalías
 # Rastrea cuántos eventos recientes hizo cada usuario
 # ============================================================
-user_event_count = {uid: 0 for uid in USER_IDS}
-user_last_reset = {uid: time.time() for uid in USER_IDS}
+user_event_count = {uid: 0 for uid in USER_IDS + [BOT_USER_ID]}
+user_last_reset = {uid: time.time() for uid in USER_IDS + [BOT_USER_ID]}
 
 # ============================================================
 # FUNCIONES DE GENERACIÓN DE EVENTOS
@@ -200,19 +209,24 @@ def is_anomalous_user(user_id: int) -> bool:
     return user_event_count[user_id] > 20
 
 
-def simulate_bot_burst(producer: KafkaProducer, bot_user_id: int):
+def simulate_bot_burst(producer: KafkaProducer, bot_user_id: int = BOT_USER_ID):
     """
     Simula un usuario bot que envía muchas calificaciones rápido.
     Esto debe disparar la alerta de anomalía en Flink.
-    Se activa aleatoriamente ~1% del tiempo.
+    Usa BOT_USER_ID (99999) para no mezclar la sesión con tráfico normal.
     """
-    print(f"\n⚠️  SIMULANDO BOT: usuario {bot_user_id} — ráfaga de eventos")
+    print(
+        f"\n⚠️  SIMULANDO BOT: usuario {bot_user_id} — ráfaga de 25 ratings "
+        f"(Flink escribe la alerta ~{os.getenv('ANOMALY_WINDOW_MINUTES', '1')} min "
+        "después, al cerrar la ventana tumbling)"
+    )
     for _ in range(25):  # 25 eventos rápidos → supera umbral de 20
         event = generate_event(bot_user_id)
         event["event_type"] = "rating"  # Solo ratings cuenta para anomalía
         send_event(producer, event)
         user_event_count[bot_user_id] += 1
         time.sleep(0.05)  # 50ms entre eventos = muy rápido
+    producer.flush()
 
 
 # ============================================================
@@ -271,26 +285,54 @@ def create_producer() -> KafkaProducer:
 # ============================================================
 
 def main():
+    parser = argparse.ArgumentParser(description="Simulador de eventos ST1630 → Kafka")
+    parser.add_argument(
+        "--bot",
+        action="store_true",
+        help="Dispara una ráfaga de bot al iniciar (usuario 99999) y sigue en modo normal",
+    )
+    parser.add_argument(
+        "--bot-only",
+        action="store_true",
+        help="Solo envía la ráfaga de bot y termina (útil para probar el dashboard)",
+    )
+    args = parser.parse_args()
+
     print("=" * 60)
     print("ST1630 - Event Simulator")
     print("Topic: platform-events | Particiones: 3")
     print(f"Velocidad: {EVENTS_PER_SECOND} eventos/segundo")
+    print(f"Usuario bot dedicado: {BOT_USER_ID} (burst automático cada {BOT_BURST_EVERY_SEC}s)")
     print("Presiona Ctrl+C para detener")
     print("=" * 60)
 
     producer = create_producer()
 
+    if args.bot or args.bot_only:
+        simulate_bot_burst(producer, BOT_USER_ID)
+        if args.bot_only:
+            producer.close()
+            return
+
     total_events = 0
     start_time = time.time()
+    last_bot_burst = start_time
 
     try:
         while True:
-            # Elegir usuario aleatorio
-            user_id = random.choice(USER_IDS)
+            # Bot programado cada BOT_BURST_EVERY_SEC para que Flink/Mongo tengan alertas nuevas
+            if time.time() - last_bot_burst >= BOT_BURST_EVERY_SEC:
+                simulate_bot_burst(producer, BOT_USER_ID)
+                last_bot_burst = time.time()
+                total_events += 25
+                continue
 
-            # 1% de probabilidad de simular un bot
-            if random.random() < 0.01:
-                simulate_bot_burst(producer, user_id)
+            # Elegir usuario aleatorio (excluye el usuario bot dedicado)
+            user_id = random.choice(NORMAL_USER_IDS)
+
+            # 5% de probabilidad extra de simular un bot
+            if random.random() < 0.05:
+                simulate_bot_burst(producer, BOT_USER_ID)
                 total_events += 25
                 continue
 
