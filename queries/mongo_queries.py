@@ -16,6 +16,7 @@ Uso típico:
 from __future__ import annotations
 
 import time
+from datetime import datetime, timedelta, timezone
 from statistics import mean, stdev
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -137,6 +138,43 @@ def q_genre_most_active_in_recent_windows(
         {"$sort": {"total_events": -1}},
     ]
     return list(db[COLL_GENRE].aggregate(pipeline))
+
+
+def q_recent_anomaly_alerts(db: Database, limit: int = 10) -> List[Dict[str, Any]]:
+    """Alertas globales más recientes (panel de monitoreo en vivo)."""
+    cur = (
+        db[COLL_ANOMALY]
+        .find({})
+        .sort([("detected_at", DESCENDING), ("_id", DESCENDING)])
+        .limit(limit)
+    )
+    return list(cur)
+
+
+def q_latest_anomaly_alert(db: Database) -> Optional[Dict[str, Any]]:
+    """Documento de alerta más reciente en la colección."""
+    return db[COLL_ANOMALY].find_one(
+        sort=[("detected_at", DESCENDING), ("_id", DESCENDING)]
+    )
+
+
+def q_anomaly_alerts_since_minutes(
+    db: Database,
+    minutes: int = 30,
+    limit: int = 15,
+) -> List[Dict[str, Any]]:
+    """
+    Alertas detectadas en los últimos N minutos (ISO UTC en detected_at).
+    Útil para el panel en vivo sin mostrar solo histórico antiguo.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+    cur = (
+        db[COLL_ANOMALY]
+        .find({"detected_at": {"$gte": cutoff}})
+        .sort([("detected_at", DESCENDING), ("_id", DESCENDING)])
+        .limit(limit)
+    )
+    return list(cur)
 
 
 def q_anomaly_alerts_for_user(
